@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Pinmo.Api/Pinmo.Api.csproj" />
+    <Project Path="src/Pinmo.Core/Pinmo.Core.csproj" />
+    <Project Path="src/Pinmo.Infrastructure/Pinmo.Infrastructure.csproj" />
+  </Folder>
+</Solution>
