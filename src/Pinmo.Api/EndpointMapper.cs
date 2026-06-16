@@ -8,15 +8,9 @@ internal static class EndpointMapper
     public static EndpointResponse ToResponse(this MonitoredEndpoint endpoint) =>
         new(
             endpoint.Id,
-            endpoint.Name,
             endpoint.Url,
-            endpoint.HttpMethod,
-            endpoint.IntervalSeconds,
-            endpoint.PacketsPerPing,
-            endpoint.IsEnabled,
             endpoint.CreatedAt,
             endpoint.LastCheckedAt,
-            endpoint.LastStatusCode,
             endpoint.LastResponseTimeMs,
             endpoint.LastIsSuccess,
             endpoint.LastErrorMessage);
@@ -24,8 +18,25 @@ internal static class EndpointMapper
     public static SettingsResponse ToResponse(this AppSettings settings) =>
         new(
             settings.DefaultIntervalSeconds,
-            settings.RequestTimeoutSeconds,
-            settings.HistoryRetentionDays,
-            settings.StartMonitoringOnLaunch,
-            settings.NotifyOnFailure);
+            settings.DefaultPacketsPerPing);
+
+    public static string DeriveNameFromUrl(string url)
+    {
+        var normalized = url.Trim();
+
+        if (normalized.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = normalized["http://".Length..];
+        }
+        else if (normalized.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = normalized["https://".Length..];
+        }
+
+        var slashIndex = normalized.IndexOf('/');
+        var authority = slashIndex >= 0 ? normalized[..slashIndex] : normalized;
+        var portSeparator = authority.IndexOf(':');
+
+        return portSeparator > 0 ? authority[..portSeparator] : authority;
+    }
 }

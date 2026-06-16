@@ -136,6 +136,11 @@ body {
   margin-bottom: 24px;
 }
 
+.page-header-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .page-header h2 {
   margin: 0 0 4px;
   font-size: 1.6rem;
@@ -368,33 +373,30 @@ body {
   color: var(--text-muted);
 }
 
-.history-table {
+.data-table-wrap {
   overflow-x: auto;
 }
 
-table {
+.data-table {
   width: 100%;
   border-collapse: collapse;
 }
 
-th, td {
+.data-table th,
+.data-table td {
   text-align: left;
   padding: 12px 10px;
   border-bottom: 1px solid var(--border);
   font-size: 0.88rem;
 }
 
-th {
+.data-table th {
   color: var(--text-muted);
   font-weight: 600;
 }
 
-.pagination {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 16px;
-  gap: 12px;
+.data-table td {
+  word-break: break-all;
 }
 
 .empty-state {

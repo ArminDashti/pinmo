@@ -4,10 +4,9 @@ Endpoint ping monitor built with **ASP.NET Core** (C# backend) and **Electron** 
 
 ## Features
 
-- **Dashboard** — live status overview, up/down counts, manual ping
-- **Add Endpoints** — register URLs with method, interval, and enable/disable
-- **History** — paginated ping log with filters
-- **Settings** — default interval, timeout, retention, auto-start monitoring
+- **Dashboard** — endpoint table with latest ping, average ping, and average packet loss
+- **Add Endpoints** — register URLs with edit and delete management
+- **Settings** — global interval and packets per check
 
 ## Prerequisites
 
@@ -47,15 +46,18 @@ pinmo/
 
 The Electron main process starts `dotnet run --project src/Pinmo.Api` and waits for `/api/health` before opening the window.
 
-Data is stored in SQLite at `%LOCALAPPDATA%\Pinmo\pinmo.db`.
+Data is stored in the app folder:
+
+- `app/endpoints.json` — monitored endpoints and their latest ping state
+- `app/settings.json` — global monitoring settings
+- `%LOCALAPPDATA%\Pinmo\pinmo.db` — ping history (SQLite)
 
 ## API endpoints
 
 | Method | Route | Description |
 |--------|-------|-------------|
-| GET | `/api/dashboard` | Dashboard summary |
+| GET | `/api/dashboard` | Dashboard endpoint metrics |
 | GET/POST | `/api/endpoints` | List / create endpoints |
 | PUT/DELETE | `/api/endpoints/{id}` | Update / delete |
 | POST | `/api/endpoints/{id}/ping` | Manual ping |
-| GET | `/api/history` | Paginated history |
 | GET/PUT | `/api/settings` | App settings |

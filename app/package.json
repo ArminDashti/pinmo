@@ -3,11 +3,45 @@
   "version": "1.0.0",
   "description": "Endpoint ping monitor with Electron UI",
   "main": "main.js",
+  "author": "Pinmo",
   "scripts": {
     "start": "electron .",
-    "dev": "electron . --dev"
+    "dev": "electron . --dev",
+    "build:win": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.pinmo.app",
+    "productName": "Pinmo",
+    "directories": {
+      "output": "../.electron-out"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/.cache/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../publish/api",
+        "to": "api",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Pinmo.${ext}"
+    }
   },
   "devDependencies": {
-    "electron": "^35.0.0"
+    "electron": "^35.0.0",
+    "electron-builder": "^25.1.8"
   }
 }

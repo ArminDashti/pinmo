@@ -1,61 +1,32 @@
 namespace Pinmo.Core.Dtos;
 
-public record EndpointRequest(
-    string Name,
-    string Url,
-    string HttpMethod = "GET",
-    int IntervalSeconds = 60,
-    int PacketsPerPing = 2,
-    bool IsEnabled = true);
+public record EndpointRequest(string Url);
 
 public record EndpointResponse(
     Guid Id,
-    string Name,
     string Url,
-    string HttpMethod,
-    int IntervalSeconds,
-    int PacketsPerPing,
-    bool IsEnabled,
     DateTime CreatedAt,
     DateTime? LastCheckedAt,
-    int? LastStatusCode,
     int? LastResponseTimeMs,
     bool? LastIsSuccess,
     string? LastErrorMessage);
 
-public record PingRecordResponse(
+public record DashboardEndpointRow(
     Guid Id,
-    Guid MonitoredEndpointId,
-    string EndpointName,
-    string EndpointUrl,
-    DateTime CheckedAt,
-    bool IsSuccess,
-    int? StatusCode,
-    int ResponseTimeMs,
-    string? ErrorMessage);
+    string Url,
+    int? LatestPingMs,
+    double? AvgPingMs,
+    double? AvgPacketLossPercent);
 
-public record DashboardSummary(
-    int TotalEndpoints,
-    int EnabledEndpoints,
-    int UpCount,
-    int DownCount,
-    int UnknownCount,
-    double AverageResponseTimeMs,
-    IReadOnlyList<EndpointResponse> Endpoints);
+public record DashboardSummary(IReadOnlyList<DashboardEndpointRow> Endpoints);
 
 public record SettingsRequest(
     int DefaultIntervalSeconds,
-    int RequestTimeoutSeconds,
-    int HistoryRetentionDays,
-    bool StartMonitoringOnLaunch,
-    bool NotifyOnFailure);
+    int DefaultPacketsPerPing);
 
 public record SettingsResponse(
     int DefaultIntervalSeconds,
-    int RequestTimeoutSeconds,
-    int HistoryRetentionDays,
-    bool StartMonitoringOnLaunch,
-    bool NotifyOnFailure);
+    int DefaultPacketsPerPing);
 
 public record PingResultResponse(
     Guid EndpointId,
@@ -63,4 +34,6 @@ public record PingResultResponse(
     int? StatusCode,
     int ResponseTimeMs,
     string? ErrorMessage,
-    DateTime CheckedAt);
+    DateTime CheckedAt,
+    int PacketsSent,
+    int PacketsSucceeded);

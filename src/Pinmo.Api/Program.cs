@@ -1,273 +1,461 @@
 using Microsoft.EntityFrameworkCore;
+
 using Pinmo.Api;
+
 using Pinmo.Core;
+
 using Pinmo.Core.Dtos;
+
 using Pinmo.Core.Entities;
+
 using Pinmo.Core.Interfaces;
+
 using Pinmo.Infrastructure;
+
 using Pinmo.Infrastructure.Data;
+
+using Pinmo.Infrastructure.Services;
+
+using Pinmo.Infrastructure.Storage;
+
+
 
 var builder = WebApplication.CreateBuilder(args);
 
+
+
 var dataDirectory = Path.Combine(
+
     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+
     "Pinmo");
+
 Directory.CreateDirectory(dataDirectory);
 
+
+
 var databasePath = Path.Combine(dataDirectory, "pinmo.db");
+
+var appDataPath = ResolveAppDataPath(builder.Configuration);
+
 var port = builder.Configuration.GetValue("Pinmo:Port", 5199);
+
+
 
 builder.WebHost.UseUrls($"http://127.0.0.1:{port}");
 
+
+
 builder.Services.AddCors(options =>
+
 {
+
     options.AddDefaultPolicy(policy =>
+
         policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod());
+
 });
 
-builder.Services.AddPinmoInfrastructure(databasePath);
+
+
+builder.Services.AddPinmoInfrastructure(databasePath, appDataPath);
+
+
 
 var app = builder.Build();
 
+
+
 using (var scope = app.Services.CreateScope())
+
 {
+
     var db = scope.ServiceProvider.GetRequiredService<PinmoDbContext>();
+
     await DbSchemaPatcher.ApplyAsync(db);
+
+
+
+    var endpointStore = scope.ServiceProvider.GetRequiredService<JsonEndpointStore>();
+
+    var settingsStore = scope.ServiceProvider.GetRequiredService<JsonSettingsStore>();
+
+    await StorageMigrator.MigrateFromDatabaseIfNeededAsync(db, endpointStore, settingsStore);
+
 }
+
+
 
 app.UseCors();
 
+
+
 var api = app.MapGroup("/api");
 
-api.MapGet("/dashboard", async (PinmoDbContext db) =>
+
+
+api.MapGet("/dashboard", async (IEndpointStore endpointStore, PinmoDbContext db) =>
+
 {
-    var endpoints = await db.MonitoredEndpoints
+
+    var endpoints = await endpointStore.GetAllAsync();
+
+    var endpointIds = endpoints.Select(e => e.Id).ToList();
+
+
+
+    var pingStats = await db.PingRecords
+
         .AsNoTracking()
-        .OrderBy(e => e.Name)
-        .ToListAsync();
 
-    var enabled = endpoints.Where(e => e.IsEnabled).ToList();
-    var upCount = enabled.Count(e => e.LastIsSuccess == true);
-    var downCount = enabled.Count(e => e.LastIsSuccess == false);
-    var unknownCount = enabled.Count(e => e.LastIsSuccess is null);
+        .Where(r => endpointIds.Contains(r.MonitoredEndpointId))
 
-    var responseTimes = enabled
-        .Where(e => e.LastResponseTimeMs.HasValue)
-        .Select(e => e.LastResponseTimeMs!.Value)
-        .ToList();
+        .GroupBy(r => r.MonitoredEndpointId)
 
-    var averageResponseTime = responseTimes.Count > 0
-        ? responseTimes.Average()
-        : 0;
+        .Select(g => new
 
-    return Results.Ok(new DashboardSummary(
-        endpoints.Count,
-        enabled.Count,
-        upCount,
-        downCount,
-        unknownCount,
-        Math.Round(averageResponseTime, 1),
-        endpoints.Select(e => e.ToResponse()).ToList()));
+        {
+
+            EndpointId = g.Key,
+
+            AvgPingMs = g.Where(r => r.PacketsSucceeded > 0)
+
+                .Average(r => (double?)r.ResponseTimeMs),
+
+            AvgPacketLossPercent = g.Average(r =>
+
+                r.PacketsSent > 0
+
+                    ? (double)(r.PacketsSent - r.PacketsSucceeded) / r.PacketsSent * 100
+
+                    : r.IsSuccess ? 0 : 100)
+
+        })
+
+        .ToDictionaryAsync(x => x.EndpointId);
+
+
+
+    var rows = endpoints.Select(endpoint =>
+
+    {
+
+        pingStats.TryGetValue(endpoint.Id, out var stats);
+
+        var latestPingMs = endpoint.LastIsSuccess == true && endpoint.LastResponseTimeMs > 0
+
+            ? endpoint.LastResponseTimeMs
+
+            : null;
+
+
+
+        return new DashboardEndpointRow(
+
+            endpoint.Id,
+
+            endpoint.Url,
+
+            latestPingMs,
+
+            stats?.AvgPingMs is null ? null : Math.Round(stats.AvgPingMs.Value, 1),
+
+            stats is null ? null : Math.Round(stats.AvgPacketLossPercent, 1));
+
+    }).ToList();
+
+
+
+    return Results.Ok(new DashboardSummary(rows));
+
 });
 
-api.MapGet("/endpoints", async (PinmoDbContext db) =>
+
+
+api.MapPost("/dashboard/reset", async (
+
+    IEndpointStore endpointStore,
+
+    PinmoDbContext db,
+
+    MonitoringScheduleState scheduleState) =>
+
 {
-    var endpoints = await db.MonitoredEndpoints
-        .AsNoTracking()
-        .OrderBy(e => e.Name)
-        .ToListAsync();
+
+    await db.PingRecords.ExecuteDeleteAsync();
+
+    await endpointStore.ResetAllPingStateAsync();
+
+    scheduleState.ResetSchedule();
+
+    return Results.NoContent();
+
+});
+
+
+
+api.MapGet("/endpoints", async (IEndpointStore endpointStore) =>
+
+{
+
+    var endpoints = await endpointStore.GetAllAsync();
 
     return Results.Ok(endpoints.Select(e => e.ToResponse()));
+
 });
 
-api.MapGet("/endpoints/{id:guid}", async (Guid id, PinmoDbContext db) =>
+
+
+api.MapGet("/endpoints/{id:guid}", async (Guid id, IEndpointStore endpointStore) =>
+
 {
-    var endpoint = await db.MonitoredEndpoints.AsNoTracking().FirstOrDefaultAsync(e => e.Id == id);
+
+    var endpoint = await endpointStore.GetByIdAsync(id);
+
     return endpoint is null ? Results.NotFound() : Results.Ok(endpoint.ToResponse());
+
 });
 
-api.MapPost("/endpoints", async (EndpointRequest request, PinmoDbContext db) =>
+
+
+api.MapPost("/endpoints", async (EndpointRequest request, IEndpointStore endpointStore, ISettingsStore settingsStore) =>
+
 {
-    if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Url))
+
+    if (!EndpointAddress.TryNormalize(request.Url, out var url, out var errorMessage))
+
     {
-        return Results.BadRequest(new { message = "Name and URL are required." });
+
+        return Results.BadRequest(new { message = errorMessage });
+
     }
 
-    if (!Uri.TryCreate(request.Url, UriKind.Absolute, out _))
-    {
-        return Results.BadRequest(new { message = "URL must be a valid absolute URI." });
-    }
 
-    var settings = await db.AppSettings.AsNoTracking().FirstAsync();
-    var interval = MonitoringOptions.NormalizeInterval(
-        request.IntervalSeconds > 0 ? request.IntervalSeconds : settings.DefaultIntervalSeconds);
-    var packetsPerPing = MonitoringOptions.NormalizePacketCount(request.PacketsPerPing);
+
+    var settings = await settingsStore.GetAsync();
+
+
 
     var endpoint = new MonitoredEndpoint
+
     {
+
         Id = Guid.NewGuid(),
-        Name = request.Name.Trim(),
-        Url = request.Url.Trim(),
-        HttpMethod = string.IsNullOrWhiteSpace(request.HttpMethod) ? "GET" : request.HttpMethod.ToUpperInvariant(),
-        IntervalSeconds = interval,
-        PacketsPerPing = packetsPerPing,
-        IsEnabled = request.IsEnabled,
+
+        Name = EndpointMapper.DeriveNameFromUrl(url),
+
+        Url = url,
+
+        HttpMethod = "GET",
+
+        IntervalSeconds = MonitoringOptions.NormalizeInterval(settings.DefaultIntervalSeconds),
+
+        PacketsPerPing = MonitoringOptions.NormalizePacketCount(settings.DefaultPacketsPerPing),
+
+        IsEnabled = true,
+
         CreatedAt = DateTime.UtcNow
+
     };
 
-    db.MonitoredEndpoints.Add(endpoint);
-    await db.SaveChangesAsync();
+
+
+    await endpointStore.AddAsync(endpoint);
+
+
 
     return Results.Created($"/api/endpoints/{endpoint.Id}", endpoint.ToResponse());
+
 });
 
-api.MapPut("/endpoints/{id:guid}", async (Guid id, EndpointRequest request, PinmoDbContext db) =>
+
+
+api.MapPut("/endpoints/{id:guid}", async (Guid id, EndpointRequest request, IEndpointStore endpointStore) =>
+
 {
-    var endpoint = await db.MonitoredEndpoints.FirstOrDefaultAsync(e => e.Id == id);
+
+    var endpoint = await endpointStore.GetByIdAsync(id);
+
     if (endpoint is null)
+
     {
+
         return Results.NotFound();
+
     }
 
-    if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Url))
+
+
+    if (!EndpointAddress.TryNormalize(request.Url, out var url, out var errorMessage))
+
     {
-        return Results.BadRequest(new { message = "Name and URL are required." });
+
+        return Results.BadRequest(new { message = errorMessage });
+
     }
 
-    if (!Uri.TryCreate(request.Url, UriKind.Absolute, out _))
-    {
-        return Results.BadRequest(new { message = "URL must be a valid absolute URI." });
-    }
 
-    endpoint.Name = request.Name.Trim();
-    endpoint.Url = request.Url.Trim();
-    endpoint.HttpMethod = string.IsNullOrWhiteSpace(request.HttpMethod) ? "GET" : request.HttpMethod.ToUpperInvariant();
-    endpoint.IntervalSeconds = request.IntervalSeconds > 0
-        ? MonitoringOptions.NormalizeInterval(request.IntervalSeconds)
-        : endpoint.IntervalSeconds;
-    endpoint.PacketsPerPing = MonitoringOptions.NormalizePacketCount(request.PacketsPerPing);
-    endpoint.IsEnabled = request.IsEnabled;
 
-    await db.SaveChangesAsync();
+    endpoint.Url = url;
+
+    endpoint.Name = EndpointMapper.DeriveNameFromUrl(url);
+
+
+
+    await endpointStore.UpdateAsync(endpoint);
+
     return Results.Ok(endpoint.ToResponse());
+
 });
 
-api.MapDelete("/endpoints/{id:guid}", async (Guid id, PinmoDbContext db) =>
+
+
+api.MapDelete("/endpoints/{id:guid}", async (Guid id, IEndpointStore endpointStore) =>
+
 {
-    var endpoint = await db.MonitoredEndpoints.FirstOrDefaultAsync(e => e.Id == id);
-    if (endpoint is null)
-    {
-        return Results.NotFound();
-    }
 
-    db.MonitoredEndpoints.Remove(endpoint);
-    await db.SaveChangesAsync();
-    return Results.NoContent();
+    var deleted = await endpointStore.DeleteAsync(id);
+
+    return deleted ? Results.NoContent() : Results.NotFound();
+
 });
+
+
 
 api.MapPost("/endpoints/{id:guid}/ping", async (
+
     Guid id,
-    PinmoDbContext db,
+
+    IEndpointStore endpointStore,
+
     IEndpointPingOrchestrator pingOrchestrator) =>
+
 {
-    var endpoint = await db.MonitoredEndpoints.FirstOrDefaultAsync(e => e.Id == id);
+
+    var endpoint = await endpointStore.GetByIdAsync(id);
+
     if (endpoint is null)
+
     {
+
         return Results.NotFound();
+
     }
+
+
 
     await pingOrchestrator.PingAndRecordAsync(endpoint, CancellationToken.None);
-    return Results.Ok(endpoint.ToResponse());
+
+    var updated = await endpointStore.GetByIdAsync(id);
+
+    return Results.Ok(updated!.ToResponse());
+
 });
 
-api.MapGet("/history", async (
-    PinmoDbContext db,
-    int page = 1,
-    int pageSize = 50,
-    Guid? endpointId = null,
-    bool? successOnly = null) =>
+
+
+api.MapGet("/settings", async (ISettingsStore settingsStore) =>
+
 {
-    page = Math.Max(1, page);
-    pageSize = Math.Clamp(pageSize, 1, 200);
 
-    var query = db.PingRecords
-        .AsNoTracking()
-        .Include(r => r.MonitoredEndpoint)
-        .AsQueryable();
+    var settings = await settingsStore.GetAsync();
 
-    if (endpointId.HasValue)
-    {
-        query = query.Where(r => r.MonitoredEndpointId == endpointId.Value);
-    }
-
-    if (successOnly.HasValue)
-    {
-        query = query.Where(r => r.IsSuccess == successOnly.Value);
-    }
-
-    var totalCount = await query.CountAsync();
-    var records = await query
-        .OrderByDescending(r => r.CheckedAt)
-        .Skip((page - 1) * pageSize)
-        .Take(pageSize)
-        .Select(r => new PingRecordResponse(
-            r.Id,
-            r.MonitoredEndpointId,
-            r.MonitoredEndpoint.Name,
-            r.MonitoredEndpoint.Url,
-            r.CheckedAt,
-            r.IsSuccess,
-            r.StatusCode,
-            r.ResponseTimeMs,
-            r.ErrorMessage))
-        .ToListAsync();
-
-    return Results.Ok(new
-    {
-        page,
-        pageSize,
-        totalCount,
-        totalPages = (int)Math.Ceiling(totalCount / (double)pageSize),
-        records
-    });
-});
-
-api.MapDelete("/history", async (PinmoDbContext db) =>
-{
-    var settings = await db.AppSettings.AsNoTracking().FirstAsync();
-    var cutoff = DateTime.UtcNow.AddDays(-settings.HistoryRetentionDays);
-    var oldRecords = await db.PingRecords.Where(r => r.CheckedAt < cutoff).ToListAsync();
-
-    if (oldRecords.Count == 0)
-    {
-        return Results.Ok(new { deletedCount = 0 });
-    }
-
-    db.PingRecords.RemoveRange(oldRecords);
-    await db.SaveChangesAsync();
-    return Results.Ok(new { deletedCount = oldRecords.Count });
-});
-
-api.MapGet("/settings", async (PinmoDbContext db) =>
-{
-    var settings = await db.AppSettings.AsNoTracking().FirstAsync();
     return Results.Ok(settings.ToResponse());
+
 });
 
-api.MapPut("/settings", async (SettingsRequest request, PinmoDbContext db) =>
+
+
+api.MapPut("/settings", async (
+
+    SettingsRequest request,
+
+    ISettingsStore settingsStore,
+
+    IEndpointStore endpointStore,
+
+    MonitoringScheduleState scheduleState) =>
+
 {
-    var settings = await db.AppSettings.FirstAsync();
+
+    var settings = await settingsStore.GetAsync();
+
+
 
     settings.DefaultIntervalSeconds = MonitoringOptions.NormalizeInterval(request.DefaultIntervalSeconds);
-    settings.RequestTimeoutSeconds = Math.Clamp(request.RequestTimeoutSeconds, 1, 120);
-    settings.HistoryRetentionDays = Math.Max(1, request.HistoryRetentionDays);
-    settings.StartMonitoringOnLaunch = request.StartMonitoringOnLaunch;
-    settings.NotifyOnFailure = request.NotifyOnFailure;
 
-    await db.SaveChangesAsync();
+    settings.DefaultPacketsPerPing = MonitoringOptions.NormalizePacketCount(request.DefaultPacketsPerPing);
+
+
+
+    await settingsStore.SaveAsync(settings);
+
+    await endpointStore.ApplySettingsToAllAsync(
+
+        settings.DefaultIntervalSeconds,
+
+        settings.DefaultPacketsPerPing);
+
+
+
+    scheduleState.ResetSchedule();
+
     return Results.Ok(settings.ToResponse());
+
 });
+
+
 
 api.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }));
 
+
+
 app.Run();
+
+
+
+static string ResolveAppDataPath(IConfiguration configuration)
+
+{
+
+    var configuredPath = configuration["Pinmo:AppDataPath"];
+
+    if (!string.IsNullOrWhiteSpace(configuredPath))
+
+    {
+
+        return Path.GetFullPath(configuredPath);
+
+    }
+
+
+
+    var fromWorkingDirectory = Path.Combine(Directory.GetCurrentDirectory(), "app");
+
+    if (Directory.Exists(fromWorkingDirectory))
+
+    {
+
+        return Path.GetFullPath(fromWorkingDirectory);
+
+    }
+
+
+
+    var fromContentRoot = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "app");
+
+    if (Directory.Exists(fromContentRoot))
+
+    {
+
+        return Path.GetFullPath(fromContentRoot);
+
+    }
+
+
+
+    return Path.GetFullPath(fromWorkingDirectory);
+
+}
+
+

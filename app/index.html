@@ -24,9 +24,6 @@
         <button class="nav-link" data-page="endpoints">
           <span class="nav-icon">＋</span> Add Endpoints
         </button>
-        <button class="nav-link" data-page="history">
-          <span class="nav-icon">↺</span> History
-        </button>
         <button class="nav-link" data-page="settings">
           <span class="nav-icon">⚙</span> Settings
         </button>
@@ -43,16 +40,17 @@
             <h2>Dashboard</h2>
             <p>Live overview of your monitored endpoints</p>
           </div>
-          <button id="refresh-dashboard" class="btn btn-secondary">Refresh</button>
+          <div class="page-header-actions">
+            <button id="reset-dashboard" class="btn btn-secondary">Reset</button>
+            <button id="refresh-dashboard" class="btn btn-secondary">Refresh</button>
+          </div>
         </header>
-
-        <div class="stats-grid" id="dashboard-stats"></div>
 
         <div class="panel">
           <div class="panel-header">
             <h3>Endpoints</h3>
           </div>
-          <div id="dashboard-endpoints" class="endpoint-list"></div>
+          <div id="dashboard-endpoints" class="data-table-wrap"></div>
         </div>
       </section>
 
@@ -67,47 +65,8 @@
         <div class="panel">
           <form id="endpoint-form" class="form-grid">
             <div class="form-field">
-              <label for="endpoint-name">Display name</label>
-              <input id="endpoint-name" name="name" type="text" placeholder="Production API" required>
-            </div>
-            <div class="form-field">
-              <label for="endpoint-url">URL</label>
-              <input id="endpoint-url" name="url" type="url" placeholder="https://api.example.com/health" required>
-            </div>
-            <div class="form-field">
-              <label for="endpoint-method">HTTP method</label>
-              <select id="endpoint-method" name="httpMethod">
-                <option value="GET">GET</option>
-                <option value="HEAD">HEAD</option>
-                <option value="POST">POST</option>
-              </select>
-            </div>
-            <div class="form-field">
-              <label for="endpoint-interval">Interval</label>
-              <select id="endpoint-interval" name="intervalSeconds">
-                <option value="1">Every 1 second</option>
-                <option value="5">Every 5 seconds</option>
-                <option value="10">Every 10 seconds</option>
-                <option value="15">Every 15 seconds</option>
-                <option value="30">Every 30 seconds</option>
-                <option value="45">Every 45 seconds</option>
-                <option value="60" selected>Every 60 seconds</option>
-              </select>
-            </div>
-            <div class="form-field">
-              <label for="endpoint-packets">Packets per check</label>
-              <select id="endpoint-packets" name="packetsPerPing">
-                <option value="2" selected>2 packets</option>
-                <option value="4">4 packets</option>
-                <option value="8">8 packets</option>
-                <option value="16">16 packets</option>
-              </select>
-            </div>
-            <div class="form-field form-checkbox">
-              <label>
-                <input id="endpoint-enabled" name="isEnabled" type="checkbox" checked>
-                Enable monitoring
-              </label>
+              <label for="endpoint-url">URL or IP</label>
+              <input id="endpoint-url" name="url" type="text" placeholder="example.com or 192.168.1.1" required>
             </div>
             <div class="form-actions">
               <button type="submit" class="btn btn-primary" id="endpoint-submit">Add endpoint</button>
@@ -120,42 +79,7 @@
           <div class="panel-header">
             <h3>Registered endpoints</h3>
           </div>
-          <div id="managed-endpoints" class="endpoint-list"></div>
-        </div>
-      </section>
-
-      <section id="page-history" class="page">
-        <header class="page-header">
-          <div>
-            <h2>History</h2>
-            <p>Past ping results across all endpoints</p>
-          </div>
-          <div class="header-actions">
-            <button id="purge-history" class="btn btn-secondary">Purge old records</button>
-            <button id="refresh-history" class="btn btn-secondary">Refresh</button>
-          </div>
-        </header>
-
-        <div class="panel filters">
-          <div class="form-field">
-            <label for="history-endpoint-filter">Endpoint</label>
-            <select id="history-endpoint-filter">
-              <option value="">All endpoints</option>
-            </select>
-          </div>
-          <div class="form-field">
-            <label for="history-status-filter">Status</label>
-            <select id="history-status-filter">
-              <option value="">All</option>
-              <option value="true">Success only</option>
-              <option value="false">Failed only</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="panel">
-          <div id="history-table" class="history-table"></div>
-          <div class="pagination" id="history-pagination"></div>
+          <div id="managed-endpoints" class="data-table-wrap"></div>
         </div>
       </section>
 
@@ -170,10 +94,10 @@
         <div class="panel">
           <form id="settings-form" class="form-grid">
             <div class="form-field">
-              <label for="settings-default-interval">Default interval</label>
+              <label for="settings-default-interval">Interval</label>
               <select id="settings-default-interval" required>
                 <option value="1">Every 1 second</option>
-                <option value="5">Every 5 seconds</option>
+                <option value="5" selected>Every 5 seconds</option>
                 <option value="10">Every 10 seconds</option>
                 <option value="15">Every 15 seconds</option>
                 <option value="30">Every 30 seconds</option>
@@ -182,24 +106,13 @@
               </select>
             </div>
             <div class="form-field">
-              <label for="settings-timeout">Request timeout (seconds)</label>
-              <input id="settings-timeout" type="number" min="1" max="120" required>
-            </div>
-            <div class="form-field">
-              <label for="settings-retention">History retention (days)</label>
-              <input id="settings-retention" type="number" min="1" required>
-            </div>
-            <div class="form-field form-checkbox">
-              <label>
-                <input id="settings-auto-start" type="checkbox">
-                Start monitoring on launch
-              </label>
-            </div>
-            <div class="form-field form-checkbox">
-              <label>
-                <input id="settings-notify-failure" type="checkbox">
-                Highlight failures on dashboard
-              </label>
+              <label for="settings-default-packets">Packets per check</label>
+              <select id="settings-default-packets" required>
+                <option value="2">2 packets</option>
+                <option value="4">4 packets</option>
+                <option value="8">8 packets</option>
+                <option value="16">16 packets</option>
+              </select>
             </div>
             <div class="form-actions">
               <button type="submit" class="btn btn-primary">Save settings</button>

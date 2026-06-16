@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Pinmo.Core;
 using Pinmo.Infrastructure.Data;
 
 namespace Pinmo.Infrastructure.Data;
@@ -9,17 +10,49 @@ public static class DbSchemaPatcher
     {
         await dbContext.Database.EnsureCreatedAsync(cancellationToken);
 
-        await TryAddPacketsPerPingColumnAsync(dbContext, cancellationToken);
+        await TryAddColumnAsync(
+            dbContext,
+            "MonitoredEndpoints",
+            "PacketsPerPing INTEGER NOT NULL DEFAULT 2;",
+            cancellationToken);
+
+        await TryAddColumnAsync(
+            dbContext,
+            "PingRecords",
+            "PacketsSent INTEGER NOT NULL DEFAULT 1;",
+            cancellationToken);
+
+        await TryAddColumnAsync(
+            dbContext,
+            "PingRecords",
+            "PacketsSucceeded INTEGER NOT NULL DEFAULT 0;",
+            cancellationToken);
+
+        await TryAddColumnAsync(
+            dbContext,
+            "AppSettings",
+            "DefaultPacketsPerPing INTEGER NOT NULL DEFAULT 2;",
+            cancellationToken);
+
+        await dbContext.Database.ExecuteSqlRawAsync(
+            """
+            UPDATE AppSettings
+            SET DefaultIntervalSeconds = 5
+            WHERE DefaultIntervalSeconds NOT IN (1, 5, 10, 15, 30, 45, 60);
+            """,
+            cancellationToken);
     }
 
-    private static async Task TryAddPacketsPerPingColumnAsync(
+    private static async Task TryAddColumnAsync(
         PinmoDbContext dbContext,
+        string tableName,
+        string columnDefinition,
         CancellationToken cancellationToken)
     {
         try
         {
             await dbContext.Database.ExecuteSqlRawAsync(
-                "ALTER TABLE MonitoredEndpoints ADD COLUMN PacketsPerPing INTEGER NOT NULL DEFAULT 2;",
+                $"ALTER TABLE {tableName} ADD COLUMN {columnDefinition}",
                 cancellationToken);
         }
         catch (Exception ex) when (IsDuplicateColumnError(ex))

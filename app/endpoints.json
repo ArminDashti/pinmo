@@ -1,0 +1,30 @@
+{
+  "endpoints": [
+    {
+      "id": "08387161-67d5-40f2-9e81-c02461bf7a21",
+      "name": "1.1.1.1",
+      "url": "1.1.1.1",
+      "httpMethod": "GET",
+      "intervalSeconds": 60,
+      "packetsPerPing": 2,
+      "isEnabled": true,
+      "createdAt": "2026-06-15T07:50:18.6724431",
+      "lastCheckedAt": "2026-06-16T06:43:19.2145053Z",
+      "lastResponseTimeMs": 95,
+      "lastIsSuccess": true
+    },
+    {
+      "id": "da5bce93-2620-420f-bb6e-46402404a45d",
+      "name": "8.8.8.8",
+      "url": "8.8.8.8",
+      "httpMethod": "GET",
+      "intervalSeconds": 5,
+      "packetsPerPing": 2,
+      "isEnabled": true,
+      "createdAt": "2026-06-15T07:51:07.5393206",
+      "lastCheckedAt": "2026-06-16T06:43:21.4549206Z",
+      "lastResponseTimeMs": 114,
+      "lastIsSuccess": true
+    }
+  ]
+}

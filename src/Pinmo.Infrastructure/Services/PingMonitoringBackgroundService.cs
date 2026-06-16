@@ -1,19 +1,16 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Pinmo.Core.Entities;
+using Pinmo.Core;
 using Pinmo.Core.Interfaces;
-using Pinmo.Infrastructure.Data;
 
 namespace Pinmo.Infrastructure.Services;
 
 public class PingMonitoringBackgroundService(
     IServiceScopeFactory scopeFactory,
+    MonitoringScheduleState scheduleState,
     ILogger<PingMonitoringBackgroundService> logger) : BackgroundService
 {
-    private readonly Dictionary<Guid, DateTime> _lastPingTimes = new();
-
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         logger.LogInformation("Ping monitoring service started.");
@@ -29,33 +26,30 @@ public class PingMonitoringBackgroundService(
                 logger.LogError(ex, "Monitoring cycle failed.");
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
         }
     }
 
     private async Task RunMonitoringCycleAsync(CancellationToken cancellationToken)
     {
         using var scope = scopeFactory.CreateScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<PinmoDbContext>();
+        var settingsStore = scope.ServiceProvider.GetRequiredService<ISettingsStore>();
+        var endpointStore = scope.ServiceProvider.GetRequiredService<IEndpointStore>();
 
-        var settings = await dbContext.AppSettings.AsNoTracking().FirstAsync(cancellationToken);
-        if (!settings.StartMonitoringOnLaunch)
-        {
-            return;
-        }
-
-        var endpoints = await dbContext.MonitoredEndpoints
+        var settings = await settingsStore.GetAsync(cancellationToken);
+        var endpoints = (await endpointStore.GetAllAsync(cancellationToken))
             .Where(e => e.IsEnabled)
-            .ToListAsync(cancellationToken);
+            .ToList();
 
         var now = DateTime.UtcNow;
+        var intervalSeconds = MonitoringOptions.NormalizeInterval(settings.DefaultIntervalSeconds);
 
         foreach (var endpoint in endpoints)
         {
-            if (_lastPingTimes.TryGetValue(endpoint.Id, out var lastPing))
+            if (scheduleState.TryGetLastPingTime(endpoint.Id, out var lastPing))
             {
                 var elapsed = now - lastPing;
-                if (elapsed.TotalSeconds < endpoint.IntervalSeconds)
+                if (elapsed.TotalSeconds < intervalSeconds)
                 {
                     continue;
                 }
@@ -63,7 +57,7 @@ public class PingMonitoringBackgroundService(
 
             var orchestrator = scope.ServiceProvider.GetRequiredService<IEndpointPingOrchestrator>();
             await orchestrator.PingAndRecordAsync(endpoint, cancellationToken);
-            _lastPingTimes[endpoint.Id] = DateTime.UtcNow;
+            scheduleState.RecordPing(endpoint.Id, DateTime.UtcNow);
         }
     }
 }

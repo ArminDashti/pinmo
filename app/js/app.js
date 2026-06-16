@@ -1,7 +1,6 @@
-import { api } from './api.js';
+import { api, showToast } from './api.js';
 import { initDashboard, loadDashboard, stopDashboardRefresh } from './dashboard.js';
 import { initEndpoints, loadManagedEndpoints } from './endpoints.js';
-import { initHistory, loadEndpointFilter, loadHistory } from './history.js';
 import { initSettings, loadSettings } from './settings.js';
 
 const pages = {
@@ -13,13 +12,6 @@ const pages = {
   endpoints: {
     init: initEndpoints,
     onShow: loadManagedEndpoints
-  },
-  history: {
-    init: initHistory,
-    onShow: async () => {
-      await loadEndpointFilter();
-      await loadHistory();
-    }
   },
   settings: {
     init: initSettings,

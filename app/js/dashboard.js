@@ -1,11 +1,27 @@
-import { api, formatDate, renderEndpointRow, showToast } from './api.js';
+import { api, escapeHtml, showToast } from './api.js';
 
 let refreshTimer = null;
 
 export function initDashboard() {
   document.getElementById('refresh-dashboard').addEventListener('click', loadDashboard);
+  document.getElementById('reset-dashboard').addEventListener('click', resetDashboard);
   loadDashboard();
-  refreshTimer = setInterval(loadDashboard, 10000);
+  refreshTimer = setInterval(loadDashboard, 1000);
+}
+
+async function resetDashboard() {
+  const resetButton = document.getElementById('reset-dashboard');
+  resetButton.disabled = true;
+
+  try {
+    await api.resetDashboard();
+    showToast('Dashboard stats reset');
+    await loadDashboard();
+  } catch (error) {
+    showToast(`Failed to reset dashboard: ${error.message}`, 'error');
+  } finally {
+    resetButton.disabled = false;
+  }
 }
 
 export function stopDashboardRefresh() {
@@ -15,47 +31,49 @@ export function stopDashboardRefresh() {
   }
 }
 
+function formatPing(value) {
+  return value == null ? '—' : `${value} ms`;
+}
+
+function formatPacketLoss(value) {
+  return value == null ? '—' : `${value}%`;
+}
+
 async function loadDashboard() {
-  const statsEl = document.getElementById('dashboard-stats');
-  const listEl = document.getElementById('dashboard-endpoints');
+  const tableEl = document.getElementById('dashboard-endpoints');
 
   try {
     const summary = await api.getDashboard();
 
-    statsEl.innerHTML = `
-      <div class="stat-card"><div class="label">Total</div><div class="value">${summary.totalEndpoints}</div></div>
-      <div class="stat-card"><div class="label">Enabled</div><div class="value">${summary.enabledEndpoints}</div></div>
-      <div class="stat-card up"><div class="label">Up</div><div class="value">${summary.upCount}</div></div>
-      <div class="stat-card down"><div class="label">Down</div><div class="value">${summary.downCount}</div></div>
-      <div class="stat-card unknown"><div class="label">Unknown</div><div class="value">${summary.unknownCount}</div></div>
-      <div class="stat-card"><div class="label">Avg response</div><div class="value">${summary.averageResponseTimeMs}<span style="font-size:0.9rem"> ms</span></div></div>
-    `;
-
     if (!summary.endpoints.length) {
-      listEl.innerHTML = '<div class="empty-state">No endpoints yet. Add one from the Add Endpoints page.</div>';
+      tableEl.innerHTML = '<div class="empty-state">No endpoints yet. Add one from the Add Endpoints page.</div>';
       return;
     }
 
-    listEl.innerHTML = summary.endpoints.map((endpoint) =>
-      renderEndpointRow(endpoint, `
-        <button class="btn btn-secondary btn-sm" data-ping-id="${endpoint.id}">Ping now</button>
-      `)
-    ).join('');
-
-    listEl.querySelectorAll('[data-ping-id]').forEach((button) => {
-      button.addEventListener('click', async () => {
-        try {
-          await api.pingEndpoint(button.dataset.pingId);
-          showToast('Ping completed');
-          await loadDashboard();
-        } catch (error) {
-          showToast(error.message, 'error');
-        }
-      });
-    });
+    tableEl.innerHTML = `
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Endpoints</th>
+            <th>Latest ping</th>
+            <th>Avg ping</th>
+            <th>Avg packet loss</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${summary.endpoints.map((endpoint) => `
+            <tr>
+              <td>${escapeHtml(endpoint.url)}</td>
+              <td>${formatPing(endpoint.latestPingMs)}</td>
+              <td>${formatPing(endpoint.avgPingMs)}</td>
+              <td>${formatPacketLoss(endpoint.avgPacketLossPercent)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
   } catch (error) {
-    statsEl.innerHTML = '';
-    listEl.innerHTML = `<div class="empty-state">Failed to load dashboard: ${error.message}</div>`;
+    tableEl.innerHTML = `<div class="empty-state">Failed to load dashboard: ${escapeHtml(error.message)}</div>`;
   }
 }
 

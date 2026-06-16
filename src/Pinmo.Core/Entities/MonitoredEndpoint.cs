@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Pinmo.Core;
 
 namespace Pinmo.Core.Entities;
@@ -18,5 +19,6 @@ public class MonitoredEndpoint
     public bool? LastIsSuccess { get; set; }
     public string? LastErrorMessage { get; set; }
 
+    [JsonIgnore]
     public ICollection<PingRecord> PingRecords { get; set; } = [];
 }

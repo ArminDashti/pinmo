@@ -1,0 +1,5 @@
+{
+  "defaultIntervalSeconds": 5,
+  "defaultPacketsPerPing": 2,
+  "requestTimeoutSeconds": 30
+}

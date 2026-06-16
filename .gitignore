@@ -25,3 +25,6 @@ Thumbs.db
 ## Electron
 dist/
 release/
+.electron-out/
+PinMo/
+publish/

@@ -1,5 +1,6 @@
 const { app, BrowserWindow, shell } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const { spawn } = require('child_process');
 const http = require('http');
 
@@ -8,32 +9,89 @@ const API_BASE = `http://127.0.0.1:${API_PORT}`;
 let apiProcess = null;
 let mainWindow = null;
 
+function resolveAppDataPath() {
+  if (app.isPackaged) {
+    return path.join(path.dirname(process.execPath), 'app');
+  }
+
+  return __dirname;
+}
+
+function buildApiEnvironment() {
+  return {
+    ...process.env,
+    ASPNETCORE_ENVIRONMENT: app.isPackaged ? 'Production' : 'Development',
+    Pinmo__Port: String(API_PORT),
+    Pinmo__AppDataPath: resolveAppDataPath()
+  };
+}
+
 function resolveApiProjectPath() {
   return path.join(__dirname, '..', 'src', 'Pinmo.Api', 'Pinmo.Api.csproj');
 }
 
+function resolvePackagedApiPath() {
+  const apiExe = path.join(process.resourcesPath, 'api', 'Pinmo.Api.exe');
+  return fs.existsSync(apiExe) ? apiExe : null;
+}
+
+function attachApiLogging(childProcess) {
+  childProcess.stdout.on('data', (data) => {
+    if (process.argv.includes('--dev')) {
+      console.log(`[API] ${data.toString().trim()}`);
+    }
+  });
+
+  childProcess.stderr.on('data', (data) => {
+    if (process.argv.includes('--dev')) {
+      console.error(`[API] ${data.toString().trim()}`);
+    }
+  });
+}
+
 function startApiServer() {
+  if (app.isPackaged) {
+    return startPackagedApiServer();
+  }
+
+  return startDevelopmentApiServer();
+}
+
+function startPackagedApiServer() {
   return new Promise((resolve, reject) => {
-    const projectPath = resolveApiProjectPath();
-    apiProcess = spawn('dotnet', ['run', '--project', projectPath], {
-      cwd: path.join(__dirname, '..'),
-      env: { ...process.env, ASPNETCORE_ENVIRONMENT: 'Development' },
+    const apiExe = resolvePackagedApiPath();
+    if (!apiExe) {
+      reject(new Error('Packaged API executable was not found'));
+      return;
+    }
+
+    apiProcess = spawn(apiExe, [], {
+      cwd: path.dirname(apiExe),
+      env: buildApiEnvironment(),
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true
     });
 
-    apiProcess.stdout.on('data', (data) => {
-      if (process.argv.includes('--dev')) {
-        console.log(`[API] ${data.toString().trim()}`);
-      }
+    attachApiLogging(apiProcess);
+    apiProcess.on('error', reject);
+
+    waitForApiReady()
+      .then(resolve)
+      .catch(reject);
+  });
+}
+
+function startDevelopmentApiServer() {
+  return new Promise((resolve, reject) => {
+    const projectPath = resolveApiProjectPath();
+    apiProcess = spawn('dotnet', ['run', '--project', projectPath], {
+      cwd: path.join(__dirname, '..'),
+      env: buildApiEnvironment(),
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true
     });
 
-    apiProcess.stderr.on('data', (data) => {
-      if (process.argv.includes('--dev')) {
-        console.error(`[API] ${data.toString().trim()}`);
-      }
-    });
-
+    attachApiLogging(apiProcess);
     apiProcess.on('error', reject);
 
     waitForApiReady()
