@@ -5,18 +5,39 @@
 #>
 $ErrorActionPreference = 'Stop'
 
-# Hooks receive JSON on stdin; consume it so the process does not block.
-$null = [Console]::In.ReadToEnd()
+$stdin = [Console]::In.ReadToEnd()
+$payload = $null
+if ($stdin) {
+    try {
+        $payload = $stdin | ConvertFrom-Json
+    }
+    catch {
+        Write-Warning "[pinmo-hook] Could not parse hook JSON; continuing with export."
+    }
+}
+
+$status = if ($payload -and $payload.status) { [string]$payload.status } else { 'completed' }
+if ($status -ne 'completed') {
+    Write-Host "[pinmo-hook] Agent status was '$status'; skipping export.ps1." -ForegroundColor DarkGray
+    Write-Output '{}'
+    exit 0
+}
 
 $projectRoot = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 $exportScript = Join-Path $projectRoot 'export.ps1'
 
 if (-not (Test-Path $exportScript)) {
     Write-Error "export.ps1 not found at $exportScript"
-    exit 1
+    Write-Output '{}'
+    exit 0
 }
 
 Write-Host '[pinmo-hook] Running export.ps1 after agent completion...' -ForegroundColor Cyan
 
 & $exportScript
-exit $LASTEXITCODE
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "[pinmo-hook] export.ps1 exited with code $LASTEXITCODE."
+}
+
+Write-Output '{}'
+exit 0

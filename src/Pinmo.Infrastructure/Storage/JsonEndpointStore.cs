@@ -129,29 +129,6 @@ public sealed class JsonEndpointStore(string filePath) : IEndpointStore
         }
     }
 
-    public async Task ApplySettingsToAllAsync(
-        int intervalSeconds,
-        int packetsPerPing,
-        CancellationToken cancellationToken = default)
-    {
-        await _lock.WaitAsync(cancellationToken);
-        try
-        {
-            var document = await ReadDocumentAsync(cancellationToken);
-            foreach (var endpoint in document.Endpoints)
-            {
-                endpoint.IntervalSeconds = intervalSeconds;
-                endpoint.PacketsPerPing = packetsPerPing;
-            }
-
-            await WriteDocumentAsync(document, cancellationToken);
-        }
-        finally
-        {
-            _lock.Release();
-        }
-    }
-
     public async Task ResetAllPingStateAsync(CancellationToken cancellationToken = default)
     {
         await _lock.WaitAsync(cancellationToken);

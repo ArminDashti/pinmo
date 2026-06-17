@@ -15,11 +15,6 @@ internal static class EndpointMapper
             endpoint.LastIsSuccess,
             endpoint.LastErrorMessage);
 
-    public static SettingsResponse ToResponse(this AppSettings settings) =>
-        new(
-            settings.DefaultIntervalSeconds,
-            settings.DefaultPacketsPerPing);
-
     public static string DeriveNameFromUrl(string url)
     {
         var normalized = url.Trim();

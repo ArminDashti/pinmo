@@ -1,12 +1,14 @@
-import { api, showToast } from './api.js';
-import { initDashboard, loadDashboard, stopDashboardRefresh } from './dashboard.js';
+import { initDashboard, loadDashboard, startDashboardRefresh, stopDashboardRefresh } from './dashboard.js';
 import { initEndpoints, loadManagedEndpoints } from './endpoints.js';
 import { initSettings, loadSettings } from './settings.js';
 
 const pages = {
   dashboard: {
     init: initDashboard,
-    onShow: loadDashboard,
+    onShow: () => {
+      startDashboardRefresh();
+      loadDashboard();
+    },
     onHide: stopDashboardRefresh
   },
   endpoints: {
@@ -42,23 +44,8 @@ function navigateTo(pageName) {
   pages[pageName].onShow?.();
 }
 
-async function updateConnectionStatus() {
-  const statusEl = document.getElementById('connection-status');
-
-  try {
-    await api.health();
-    statusEl.textContent = 'API connected';
-    statusEl.className = 'status-pill status-up';
-  } catch {
-    statusEl.textContent = 'API offline';
-    statusEl.className = 'status-pill status-down';
-  }
-}
-
 document.querySelectorAll('.nav-link').forEach((link) => {
   link.addEventListener('click', () => navigateTo(link.dataset.page));
 });
 
 navigateTo('dashboard');
-updateConnectionStatus();
-setInterval(updateConnectionStatus, 15000);

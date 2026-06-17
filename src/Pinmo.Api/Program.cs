@@ -96,79 +96,7 @@ var api = app.MapGroup("/api");
 
 api.MapGet("/dashboard", async (IEndpointStore endpointStore, PinmoDbContext db) =>
 
-{
-
-    var endpoints = await endpointStore.GetAllAsync();
-
-    var endpointIds = endpoints.Select(e => e.Id).ToList();
-
-
-
-    var pingStats = await db.PingRecords
-
-        .AsNoTracking()
-
-        .Where(r => endpointIds.Contains(r.MonitoredEndpointId))
-
-        .GroupBy(r => r.MonitoredEndpointId)
-
-        .Select(g => new
-
-        {
-
-            EndpointId = g.Key,
-
-            AvgPingMs = g.Where(r => r.PacketsSucceeded > 0)
-
-                .Average(r => (double?)r.ResponseTimeMs),
-
-            AvgPacketLossPercent = g.Average(r =>
-
-                r.PacketsSent > 0
-
-                    ? (double)(r.PacketsSent - r.PacketsSucceeded) / r.PacketsSent * 100
-
-                    : r.IsSuccess ? 0 : 100)
-
-        })
-
-        .ToDictionaryAsync(x => x.EndpointId);
-
-
-
-    var rows = endpoints.Select(endpoint =>
-
-    {
-
-        pingStats.TryGetValue(endpoint.Id, out var stats);
-
-        var latestPingMs = endpoint.LastIsSuccess == true && endpoint.LastResponseTimeMs > 0
-
-            ? endpoint.LastResponseTimeMs
-
-            : null;
-
-
-
-        return new DashboardEndpointRow(
-
-            endpoint.Id,
-
-            endpoint.Url,
-
-            latestPingMs,
-
-            stats?.AvgPingMs is null ? null : Math.Round(stats.AvgPingMs.Value, 1),
-
-            stats is null ? null : Math.Round(stats.AvgPacketLossPercent, 1));
-
-    }).ToList();
-
-
-
-    return Results.Ok(new DashboardSummary(rows));
-
-});
+    Results.Ok(await BuildDashboardSummaryAsync(endpointStore, db)));
 
 
 
@@ -188,7 +116,7 @@ api.MapPost("/dashboard/reset", async (
 
     scheduleState.ResetSchedule();
 
-    return Results.NoContent();
+    return Results.Ok(await BuildDashboardSummaryAsync(endpointStore, db));
 
 });
 
@@ -218,7 +146,7 @@ api.MapGet("/endpoints/{id:guid}", async (Guid id, IEndpointStore endpointStore)
 
 
 
-api.MapPost("/endpoints", async (EndpointRequest request, IEndpointStore endpointStore, ISettingsStore settingsStore) =>
+api.MapPost("/endpoints", async (EndpointRequest request, IEndpointStore endpointStore) =>
 
 {
 
@@ -229,10 +157,6 @@ api.MapPost("/endpoints", async (EndpointRequest request, IEndpointStore endpoin
         return Results.BadRequest(new { message = errorMessage });
 
     }
-
-
-
-    var settings = await settingsStore.GetAsync();
 
 
 
@@ -247,10 +171,6 @@ api.MapPost("/endpoints", async (EndpointRequest request, IEndpointStore endpoin
         Url = url,
 
         HttpMethod = "GET",
-
-        IntervalSeconds = MonitoringOptions.NormalizeInterval(settings.DefaultIntervalSeconds),
-
-        PacketsPerPing = MonitoringOptions.NormalizePacketCount(settings.DefaultPacketsPerPing),
 
         IsEnabled = true,
 
@@ -354,65 +274,91 @@ api.MapPost("/endpoints/{id:guid}/ping", async (
 
 
 
-api.MapGet("/settings", async (ISettingsStore settingsStore) =>
-
-{
-
-    var settings = await settingsStore.GetAsync();
-
-    return Results.Ok(settings.ToResponse());
-
-});
-
-
-
-api.MapPut("/settings", async (
-
-    SettingsRequest request,
-
-    ISettingsStore settingsStore,
-
-    IEndpointStore endpointStore,
-
-    MonitoringScheduleState scheduleState) =>
-
-{
-
-    var settings = await settingsStore.GetAsync();
-
-
-
-    settings.DefaultIntervalSeconds = MonitoringOptions.NormalizeInterval(request.DefaultIntervalSeconds);
-
-    settings.DefaultPacketsPerPing = MonitoringOptions.NormalizePacketCount(request.DefaultPacketsPerPing);
-
-
-
-    await settingsStore.SaveAsync(settings);
-
-    await endpointStore.ApplySettingsToAllAsync(
-
-        settings.DefaultIntervalSeconds,
-
-        settings.DefaultPacketsPerPing);
-
-
-
-    scheduleState.ResetSchedule();
-
-    return Results.Ok(settings.ToResponse());
-
-});
-
-
-
 api.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }));
 
+api.MapGet("/settings", async (ISettingsStore settingsStore) =>
+{
+    var settings = await settingsStore.GetAsync();
+    return Results.Ok(ToSettingsResponse(settings));
+});
 
+api.MapPut("/settings", async (SettingsUpdateRequest request, ISettingsStore settingsStore) =>
+{
+    if (!TryParseCloseWindowAction(request.CloseWindowAction, out var closeAction))
+    {
+        return Results.BadRequest(new { message = "Invalid close window action." });
+    }
+
+    var settings = await settingsStore.GetAsync();
+    settings.CloseWindowAction = closeAction;
+    var saved = await settingsStore.SaveAsync(settings);
+    return Results.Ok(ToSettingsResponse(saved));
+});
 
 app.Run();
 
+static async Task<DashboardSummary> BuildDashboardSummaryAsync(IEndpointStore endpointStore, PinmoDbContext db)
+{
+    var endpoints = await endpointStore.GetAllAsync();
+    var endpointIds = endpoints.Select(e => e.Id).ToList();
 
+    var pingStats = await db.PingRecords
+        .AsNoTracking()
+        .Where(r => endpointIds.Contains(r.MonitoredEndpointId))
+        .GroupBy(r => r.MonitoredEndpointId)
+        .Select(g => new
+        {
+            EndpointId = g.Key,
+            AvgPingMs = g.Where(r => r.PacketsSucceeded > 0)
+                .Average(r => (double?)r.ResponseTimeMs),
+            AvgPacketLossPercent = g.Average(r =>
+                r.PacketsSent > 0
+                    ? (double)(r.PacketsSent - r.PacketsSucceeded) / r.PacketsSent * 100
+                    : r.IsSuccess ? 0 : 100)
+        })
+        .ToDictionaryAsync(x => x.EndpointId);
+
+    var rows = endpoints.Select(endpoint =>
+    {
+        pingStats.TryGetValue(endpoint.Id, out var stats);
+        var latestPingMs = endpoint.LastIsSuccess == true && endpoint.LastResponseTimeMs > 0
+            ? endpoint.LastResponseTimeMs
+            : null;
+
+        return new DashboardEndpointRow(
+            endpoint.Id,
+            endpoint.Url,
+            latestPingMs,
+            stats?.AvgPingMs is null ? null : Math.Round(stats.AvgPingMs.Value, 1),
+            stats is null ? null : Math.Round(stats.AvgPacketLossPercent, 1));
+    }).ToList();
+
+    return new DashboardSummary(rows);
+}
+
+static SettingsResponse ToSettingsResponse(AppSettings settings) =>
+    new(settings.RequestTimeoutSeconds, ToCloseWindowActionValue(settings.CloseWindowAction));
+
+static string ToCloseWindowActionValue(CloseWindowAction action) =>
+    action == CloseWindowAction.MinimizeToTaskbar ? "minimizeToTaskbar" : "quit";
+
+static bool TryParseCloseWindowAction(string? value, out CloseWindowAction action)
+{
+    if (string.Equals(value, "minimizeToTaskbar", StringComparison.OrdinalIgnoreCase))
+    {
+        action = CloseWindowAction.MinimizeToTaskbar;
+        return true;
+    }
+
+    if (string.Equals(value, "quit", StringComparison.OrdinalIgnoreCase))
+    {
+        action = CloseWindowAction.Quit;
+        return true;
+    }
+
+    action = CloseWindowAction.Quit;
+    return false;
+}
 
 static string ResolveAppDataPath(IConfiguration configuration)
 

@@ -33,23 +33,20 @@ public class PingMonitoringBackgroundService(
     private async Task RunMonitoringCycleAsync(CancellationToken cancellationToken)
     {
         using var scope = scopeFactory.CreateScope();
-        var settingsStore = scope.ServiceProvider.GetRequiredService<ISettingsStore>();
         var endpointStore = scope.ServiceProvider.GetRequiredService<IEndpointStore>();
 
-        var settings = await settingsStore.GetAsync(cancellationToken);
         var endpoints = (await endpointStore.GetAllAsync(cancellationToken))
             .Where(e => e.IsEnabled)
             .ToList();
 
         var now = DateTime.UtcNow;
-        var intervalSeconds = MonitoringOptions.NormalizeInterval(settings.DefaultIntervalSeconds);
 
         foreach (var endpoint in endpoints)
         {
             if (scheduleState.TryGetLastPingTime(endpoint.Id, out var lastPing))
             {
                 var elapsed = now - lastPing;
-                if (elapsed.TotalSeconds < intervalSeconds)
+                if (elapsed.TotalSeconds < MonitoringOptions.IntervalSeconds)
                 {
                     continue;
                 }

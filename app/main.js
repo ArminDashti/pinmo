@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell } = require('electron');
+const { app, BrowserWindow, Menu, shell, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -8,6 +8,7 @@ const API_PORT = 5199;
 const API_BASE = `http://127.0.0.1:${API_PORT}`;
 let apiProcess = null;
 let mainWindow = null;
+let isQuitting = false;
 
 function resolveAppDataPath() {
   if (app.isPackaged) {
@@ -141,6 +142,26 @@ function stopApiServer() {
   }
 }
 
+function readSettingsFile() {
+  try {
+    const settingsPath = path.join(resolveAppDataPath(), 'settings.json');
+    if (!fs.existsSync(settingsPath)) {
+      return {};
+    }
+
+    return JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+function shouldMinimizeOnClose() {
+  const settings = readSettingsFile();
+  const action = settings.closeWindowAction;
+
+  return action === 'minimizeToTaskbar' || action === 'MinimizeToTaskbar' || action === 0;
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -166,9 +187,23 @@ function createWindow() {
   if (process.argv.includes('--dev')) {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
+
+  mainWindow.on('close', (event) => {
+    if (shouldMinimizeOnClose() && !isQuitting) {
+      event.preventDefault();
+      mainWindow.minimize();
+    }
+  });
 }
 
 app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null);
+
+  ipcMain.handle('app:quit', () => {
+    isQuitting = true;
+    app.quit();
+  });
+
   try {
     await startApiServer();
     createWindow();
@@ -192,6 +227,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  isQuitting = true;
   stopApiServer();
 });
 

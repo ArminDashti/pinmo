@@ -17,9 +17,5 @@ public interface IEndpointStore
         int? responseTimeMs,
         string? errorMessage,
         CancellationToken cancellationToken = default);
-    Task ApplySettingsToAllAsync(
-        int intervalSeconds,
-        int packetsPerPing,
-        CancellationToken cancellationToken = default);
     Task ResetAllPingStateAsync(CancellationToken cancellationToken = default);
 }

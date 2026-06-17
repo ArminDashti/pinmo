@@ -20,14 +20,6 @@ public record DashboardEndpointRow(
 
 public record DashboardSummary(IReadOnlyList<DashboardEndpointRow> Endpoints);
 
-public record SettingsRequest(
-    int DefaultIntervalSeconds,
-    int DefaultPacketsPerPing);
-
-public record SettingsResponse(
-    int DefaultIntervalSeconds,
-    int DefaultPacketsPerPing);
-
 public record PingResultResponse(
     Guid EndpointId,
     bool IsSuccess,

@@ -1,34 +1,34 @@
 import { api, showToast } from './api.js';
 
 export function initSettings() {
-  document.getElementById('settings-form').addEventListener('submit', handleSubmit);
-  loadSettings();
+  const form = document.getElementById('settings-form');
+  const exitButton = document.getElementById('exit-app');
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+
+    const closeWindowAction = form.elements.closeWindowAction.value;
+
+    try {
+      await api.updateSettings({ closeWindowAction });
+      showToast('Settings saved');
+    } catch (error) {
+      showToast(error.message, 'error');
+    }
+  });
+
+  exitButton.addEventListener('click', () => {
+    window.pinmoConfig?.quitApp?.();
+  });
 }
 
-async function loadSettings() {
+export async function loadSettings() {
+  const form = document.getElementById('settings-form');
+
   try {
     const settings = await api.getSettings();
-    document.getElementById('settings-default-interval').value = settings.defaultIntervalSeconds;
-    document.getElementById('settings-default-packets').value = settings.defaultPacketsPerPing;
-  } catch (error) {
-    showToast(`Failed to load settings: ${error.message}`, 'error');
-  }
-}
-
-async function handleSubmit(event) {
-  event.preventDefault();
-
-  const payload = {
-    defaultIntervalSeconds: Number(document.getElementById('settings-default-interval').value),
-    defaultPacketsPerPing: Number(document.getElementById('settings-default-packets').value)
-  };
-
-  try {
-    await api.updateSettings(payload);
-    showToast('Settings saved');
+    form.elements.closeWindowAction.value = settings.closeWindowAction;
   } catch (error) {
     showToast(error.message, 'error');
   }
 }
-
-export { loadSettings };

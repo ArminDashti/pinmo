@@ -1,4 +1,3 @@
-using Pinmo.Core;
 using Pinmo.Core.Entities;
 using Pinmo.Core.Interfaces;
 
@@ -61,16 +60,18 @@ public sealed class JsonSettingsStore(string filePath) : ISettingsStore
 
     private static AppSettings CreateDefault() => new()
     {
-        DefaultIntervalSeconds = MonitoringOptions.DefaultIntervalSeconds,
-        DefaultPacketsPerPing = MonitoringOptions.DefaultPacketsPerPing,
         RequestTimeoutSeconds = 30
     };
 
     private static AppSettings Normalize(AppSettings settings)
     {
-        settings.DefaultIntervalSeconds = MonitoringOptions.NormalizeInterval(settings.DefaultIntervalSeconds);
-        settings.DefaultPacketsPerPing = MonitoringOptions.NormalizePacketCount(settings.DefaultPacketsPerPing);
         settings.RequestTimeoutSeconds = Math.Clamp(settings.RequestTimeoutSeconds, 1, 120);
+
+        if (!Enum.IsDefined(settings.CloseWindowAction))
+        {
+            settings.CloseWindowAction = CloseWindowAction.Quit;
+        }
+
         return settings;
     }
 }

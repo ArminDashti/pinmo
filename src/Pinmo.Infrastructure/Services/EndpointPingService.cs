@@ -36,7 +36,7 @@ public class EndpointPingService(
 
         var settings = await settingsStore.GetAsync(cancellationToken);
 
-        var packetCount = MonitoringOptions.NormalizePacketCount(settings.DefaultPacketsPerPing);
+        var packetCount = MonitoringOptions.PacketsPerPing;
 
         var timeoutMs = Math.Clamp(settings.RequestTimeoutSeconds, 1, 120) * 1000;
 

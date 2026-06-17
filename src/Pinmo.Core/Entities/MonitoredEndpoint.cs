@@ -1,5 +1,4 @@
 using System.Text.Json.Serialization;
-using Pinmo.Core;
 
 namespace Pinmo.Core.Entities;
 
@@ -9,8 +8,6 @@ public class MonitoredEndpoint
     public string Name { get; set; } = string.Empty;
     public string Url { get; set; } = string.Empty;
     public string HttpMethod { get; set; } = "GET";
-    public int IntervalSeconds { get; set; } = MonitoringOptions.DefaultIntervalSeconds;
-    public int PacketsPerPing { get; set; } = MonitoringOptions.DefaultPacketsPerPing;
     public bool IsEnabled { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastCheckedAt { get; set; }
