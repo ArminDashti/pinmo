@@ -38,7 +38,9 @@ public class EndpointPingService(
 
         var packetCount = MonitoringOptions.PacketsPerPing;
 
-        var timeoutMs = Math.Clamp(settings.RequestTimeoutSeconds, 1, 120) * 1000;
+        var configuredTimeoutMs = Math.Clamp(settings.RequestTimeoutSeconds, 1, 120) * 1000;
+        var monitoringTimeoutMs = MonitoringOptions.PingTimeoutSeconds * 1000;
+        var timeoutMs = Math.Min(configuredTimeoutMs, monitoringTimeoutMs);
 
         var attempts = new List<PingAttemptResult>(packetCount);
 

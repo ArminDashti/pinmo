@@ -41,17 +41,16 @@ pinmo/
 ├── src/
 │   ├── Pinmo.Api/           # ASP.NET Core REST API (port 5199)
 │   ├── Pinmo.Core/          # Domain models & DTOs
-│   └── Pinmo.Infrastructure/ # EF Core SQLite, ping service, background monitor
+│   └── Pinmo.Infrastructure/ # In-memory session storage, ping service, background monitor
 └── app/                     # Electron shell + HTML/CSS/JS UI
 ```
 
 The Electron main process starts `dotnet run --project src/Pinmo.Api` and waits for `/api/health` before opening the window.
 
-Data is stored in the app folder:
+All monitoring data lives in memory for the current session. When the app closes, ping history, endpoint changes, and settings reset. Default endpoints and settings can be seeded from:
 
-- `app/endpoints.json` — monitored endpoints and their latest ping state
-- `app/settings.json` — request timeout configuration
-- `%LOCALAPPDATA%\Pinmo\pinmo.db` — ping history (SQLite)
+- `app/endpoints.json` — default endpoints loaded at startup
+- `app/settings.json` — default settings loaded at startup
 
 ## API endpoints
 

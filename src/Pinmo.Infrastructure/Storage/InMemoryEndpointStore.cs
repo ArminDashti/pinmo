@@ -3,17 +3,48 @@ using Pinmo.Core.Interfaces;
 
 namespace Pinmo.Infrastructure.Storage;
 
-public sealed class JsonEndpointStore(string filePath) : IEndpointStore
+public sealed class InMemoryEndpointStore : IEndpointStore
 {
+    private readonly List<MonitoredEndpoint> _endpoints = [];
     private readonly SemaphoreSlim _lock = new(1, 1);
+    private string? _filePath;
+
+    public async Task LoadSeedFromFileAsync(string? filePath, CancellationToken cancellationToken = default)
+    {
+        _filePath = string.IsNullOrWhiteSpace(filePath) ? null : filePath;
+
+        if (_filePath is null || !File.Exists(_filePath))
+        {
+            return;
+        }
+
+        var document = await JsonFileHelper.ReadAsync(
+            _filePath,
+            new EndpointDocument(),
+            cancellationToken);
+
+        var seeded = document.Endpoints
+            .Select(ClearPingState)
+            .ToList();
+
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            _endpoints.Clear();
+            _endpoints.AddRange(seeded);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
 
     public async Task<IReadOnlyList<MonitoredEndpoint>> GetAllAsync(CancellationToken cancellationToken = default)
     {
         await _lock.WaitAsync(cancellationToken);
         try
         {
-            var document = await ReadDocumentAsync(cancellationToken);
-            return document.Endpoints
+            return _endpoints
                 .OrderBy(e => e.Url, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
@@ -28,8 +59,7 @@ public sealed class JsonEndpointStore(string filePath) : IEndpointStore
         await _lock.WaitAsync(cancellationToken);
         try
         {
-            var document = await ReadDocumentAsync(cancellationToken);
-            return document.Endpoints.FirstOrDefault(e => e.Id == id);
+            return _endpoints.FirstOrDefault(e => e.Id == id);
         }
         finally
         {
@@ -42,9 +72,8 @@ public sealed class JsonEndpointStore(string filePath) : IEndpointStore
         await _lock.WaitAsync(cancellationToken);
         try
         {
-            var document = await ReadDocumentAsync(cancellationToken);
-            document.Endpoints.Add(endpoint);
-            await WriteDocumentAsync(document, cancellationToken);
+            _endpoints.Add(endpoint);
+            await PersistLockedAsync(cancellationToken);
             return endpoint;
         }
         finally
@@ -58,15 +87,14 @@ public sealed class JsonEndpointStore(string filePath) : IEndpointStore
         await _lock.WaitAsync(cancellationToken);
         try
         {
-            var document = await ReadDocumentAsync(cancellationToken);
-            var index = document.Endpoints.FindIndex(e => e.Id == endpoint.Id);
+            var index = _endpoints.FindIndex(e => e.Id == endpoint.Id);
             if (index < 0)
             {
                 return null;
             }
 
-            document.Endpoints[index] = endpoint;
-            await WriteDocumentAsync(document, cancellationToken);
+            _endpoints[index] = endpoint;
+            await PersistLockedAsync(cancellationToken);
             return endpoint;
         }
         finally
@@ -80,15 +108,13 @@ public sealed class JsonEndpointStore(string filePath) : IEndpointStore
         await _lock.WaitAsync(cancellationToken);
         try
         {
-            var document = await ReadDocumentAsync(cancellationToken);
-            var removed = document.Endpoints.RemoveAll(e => e.Id == id);
-            if (removed == 0)
+            var removed = _endpoints.RemoveAll(e => e.Id == id) > 0;
+            if (removed)
             {
-                return false;
+                await PersistLockedAsync(cancellationToken);
             }
 
-            await WriteDocumentAsync(document, cancellationToken);
-            return true;
+            return removed;
         }
         finally
         {
@@ -108,8 +134,7 @@ public sealed class JsonEndpointStore(string filePath) : IEndpointStore
         await _lock.WaitAsync(cancellationToken);
         try
         {
-            var document = await ReadDocumentAsync(cancellationToken);
-            var endpoint = document.Endpoints.FirstOrDefault(e => e.Id == id);
+            var endpoint = _endpoints.FirstOrDefault(e => e.Id == id);
             if (endpoint is null)
             {
                 return;
@@ -120,8 +145,7 @@ public sealed class JsonEndpointStore(string filePath) : IEndpointStore
             endpoint.LastStatusCode = statusCode;
             endpoint.LastResponseTimeMs = responseTimeMs;
             endpoint.LastErrorMessage = errorMessage;
-
-            await WriteDocumentAsync(document, cancellationToken);
+            await PersistLockedAsync(cancellationToken);
         }
         finally
         {
@@ -134,17 +158,12 @@ public sealed class JsonEndpointStore(string filePath) : IEndpointStore
         await _lock.WaitAsync(cancellationToken);
         try
         {
-            var document = await ReadDocumentAsync(cancellationToken);
-            foreach (var endpoint in document.Endpoints)
+            foreach (var endpoint in _endpoints)
             {
-                endpoint.LastCheckedAt = null;
-                endpoint.LastIsSuccess = null;
-                endpoint.LastStatusCode = null;
-                endpoint.LastResponseTimeMs = null;
-                endpoint.LastErrorMessage = null;
+                ClearPingState(endpoint);
             }
 
-            await WriteDocumentAsync(document, cancellationToken);
+            await PersistLockedAsync(cancellationToken);
         }
         finally
         {
@@ -152,26 +171,28 @@ public sealed class JsonEndpointStore(string filePath) : IEndpointStore
         }
     }
 
-    public async Task ReplaceAllAsync(IEnumerable<MonitoredEndpoint> endpoints, CancellationToken cancellationToken = default)
+    private async Task PersistLockedAsync(CancellationToken cancellationToken)
     {
-        await _lock.WaitAsync(cancellationToken);
-        try
+        if (_filePath is null)
         {
-            await WriteDocumentAsync(new EndpointDocument(endpoints.ToList()), cancellationToken);
+            return;
         }
-        finally
-        {
-            _lock.Release();
-        }
+
+        await JsonFileHelper.WriteAsync(
+            _filePath,
+            new EndpointDocument(_endpoints.ToList()),
+            cancellationToken);
     }
 
-    public bool FileExists() => File.Exists(filePath);
-
-    private Task<EndpointDocument> ReadDocumentAsync(CancellationToken cancellationToken) =>
-        JsonFileHelper.ReadAsync(filePath, new EndpointDocument(), cancellationToken);
-
-    private Task WriteDocumentAsync(EndpointDocument document, CancellationToken cancellationToken) =>
-        JsonFileHelper.WriteAsync(filePath, document, cancellationToken);
+    private static MonitoredEndpoint ClearPingState(MonitoredEndpoint endpoint)
+    {
+        endpoint.LastCheckedAt = null;
+        endpoint.LastIsSuccess = null;
+        endpoint.LastStatusCode = null;
+        endpoint.LastResponseTimeMs = null;
+        endpoint.LastErrorMessage = null;
+        return endpoint;
+    }
 
     private sealed class EndpointDocument
     {

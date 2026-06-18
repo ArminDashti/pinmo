@@ -1,7 +1,5 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Pinmo.Core.Interfaces;
-using Pinmo.Infrastructure.Data;
 using Pinmo.Infrastructure.Services;
 using Pinmo.Infrastructure.Storage;
 
@@ -11,21 +9,14 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddPinmoInfrastructure(
         this IServiceCollection services,
-        string databasePath,
         string appDataPath)
     {
-        Directory.CreateDirectory(appDataPath);
-
-        var endpointsPath = Path.Combine(appDataPath, "endpoints.json");
-        var settingsPath = Path.Combine(appDataPath, "settings.json");
-
-        services.AddDbContext<PinmoDbContext>(options =>
-            options.UseSqlite($"Data Source={databasePath}"));
-
-        services.AddSingleton(new JsonEndpointStore(endpointsPath));
-        services.AddSingleton<IEndpointStore>(sp => sp.GetRequiredService<JsonEndpointStore>());
-        services.AddSingleton(new JsonSettingsStore(settingsPath));
-        services.AddSingleton<ISettingsStore>(sp => sp.GetRequiredService<JsonSettingsStore>());
+        services.AddSingleton<InMemoryEndpointStore>();
+        services.AddSingleton<IEndpointStore>(sp => sp.GetRequiredService<InMemoryEndpointStore>());
+        services.AddSingleton<InMemorySettingsStore>();
+        services.AddSingleton<ISettingsStore>(sp => sp.GetRequiredService<InMemorySettingsStore>());
+        services.AddSingleton<InMemoryPingRecordStore>();
+        services.AddSingleton<IPingRecordStore>(sp => sp.GetRequiredService<InMemoryPingRecordStore>());
 
         services.AddHttpClient("PingClient", client =>
         {
@@ -40,4 +31,10 @@ public static class DependencyInjection
 
         return services;
     }
+
+    public static string GetEndpointsSeedPath(string appDataPath) =>
+        Path.Combine(appDataPath, "endpoints.json");
+
+    public static string GetSettingsSeedPath(string appDataPath) =>
+        Path.Combine(appDataPath, "settings.json");
 }

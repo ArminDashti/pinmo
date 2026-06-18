@@ -1,6 +1,67 @@
 import { api, escapeHtml, showToast } from './api.js';
 
 let editingEndpointId = null;
+let managedLoadRequestId = 0;
+let isSubmitting = false;
+
+function isEndpointsPageActive() {
+  return document.getElementById('page-endpoints')?.classList.contains('active') ?? false;
+}
+
+function isUrlInputFocused() {
+  const urlInput = document.getElementById('endpoint-url');
+  return urlInput !== null && document.activeElement === urlInput;
+}
+
+function focusEndpointUrlInput() {
+  const focus = () => {
+    const urlInput = document.getElementById('endpoint-url');
+    if (!urlInput || !isEndpointsPageActive()) {
+      return;
+    }
+
+    window.focus();
+    urlInput.focus({ preventScroll: true });
+  };
+
+  focus();
+  requestAnimationFrame(focus);
+  setTimeout(focus, 0);
+}
+
+function showDeleteConfirm(message) {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'confirm-backdrop';
+    backdrop.innerHTML = `
+      <div class="confirm-dialog" role="alertdialog" aria-modal="true">
+        <p>${escapeHtml(message)}</p>
+        <div class="confirm-actions">
+          <button type="button" class="btn btn-secondary" data-action="cancel">Cancel</button>
+          <button type="button" class="btn btn-danger" data-action="confirm">Delete</button>
+        </div>
+      </div>
+    `;
+
+    const finish = (confirmed) => {
+      backdrop.remove();
+      resolve(confirmed);
+      focusEndpointUrlInput();
+    };
+
+    backdrop.addEventListener('click', (event) => {
+      if (event.target === backdrop) {
+        finish(false);
+      }
+    });
+
+    backdrop.querySelector('[data-action="cancel"]').addEventListener('click', () => finish(false));
+    backdrop.querySelector('[data-action="confirm"]').addEventListener('click', () => finish(true));
+
+    document.body.appendChild(backdrop);
+    backdrop.querySelector('[data-action="confirm"]').focus();
+  });
+}
 
 function normalizeEndpointAddress(input) {
   let value = input.trim();
@@ -60,12 +121,14 @@ export function initEndpoints() {
 
   form.addEventListener('submit', handleSubmit);
   cancelButton.addEventListener('click', resetForm);
-
-  loadManagedEndpoints();
 }
 
 async function handleSubmit(event) {
   event.preventDefault();
+
+  if (isSubmitting) {
+    return;
+  }
 
   const normalized = normalizeEndpointAddress(document.getElementById('endpoint-url').value);
 
@@ -78,6 +141,10 @@ async function handleSubmit(event) {
     url: normalized.value
   };
 
+  const submitButton = document.getElementById('endpoint-submit');
+  isSubmitting = true;
+  submitButton.disabled = true;
+
   try {
     if (editingEndpointId) {
       await api.updateEndpoint(editingEndpointId, payload);
@@ -88,9 +155,12 @@ async function handleSubmit(event) {
     }
 
     resetForm();
-    await loadManagedEndpoints();
+    await loadManagedEndpoints({ force: true });
   } catch (error) {
     showToast(error.message, 'error');
+  } finally {
+    isSubmitting = false;
+    submitButton.disabled = false;
   }
 }
 
@@ -101,11 +171,28 @@ function resetForm() {
   document.getElementById('endpoint-cancel').hidden = true;
 }
 
-async function loadManagedEndpoints() {
+async function loadManagedEndpoints({ force = false } = {}) {
+  if (!isEndpointsPageActive()) {
+    return;
+  }
+
+  if (!force && isUrlInputFocused()) {
+    return;
+  }
+
+  const requestId = ++managedLoadRequestId;
   const container = document.getElementById('managed-endpoints');
 
   try {
     const endpoints = await api.getEndpoints();
+
+    if (requestId !== managedLoadRequestId || !isEndpointsPageActive()) {
+      return;
+    }
+
+    if (!force && isUrlInputFocused()) {
+      return;
+    }
 
     if (!endpoints.length) {
       container.innerHTML = '<div class="empty-state">No endpoints registered yet.</div>';
@@ -143,17 +230,35 @@ async function loadManagedEndpoints() {
 
     container.querySelectorAll('[data-delete-id]').forEach((button) => {
       button.addEventListener('click', async () => {
-        if (!confirm('Delete this endpoint?')) return;
+        const deletedId = button.dataset.deleteId;
+        const confirmed = await showDeleteConfirm('Delete this endpoint?');
+
+        if (!confirmed) {
+          return;
+        }
+
         try {
-          await api.deleteEndpoint(button.dataset.deleteId);
+          focusEndpointUrlInput();
+          await api.deleteEndpoint(deletedId);
+
+          if (editingEndpointId === deletedId) {
+            resetForm();
+          }
+
           showToast('Endpoint deleted');
-          await loadManagedEndpoints();
+          await loadManagedEndpoints({ force: true });
+          focusEndpointUrlInput();
         } catch (error) {
           showToast(error.message, 'error');
+          focusEndpointUrlInput();
         }
       });
     });
   } catch (error) {
+    if (requestId !== managedLoadRequestId || !isEndpointsPageActive()) {
+      return;
+    }
+
     container.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
   }
 }

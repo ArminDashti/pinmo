@@ -1,9 +1,28 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Cursor stop hook — runs export.ps1 after each agent prompt completes.
+  Cursor stop hook — runs export.ps1, then launches Pinmo after each agent prompt completes.
 #>
 $ErrorActionPreference = 'Stop'
+
+function Stop-PinmoProcesses {
+    $processNames = @('Pinmo', 'Pinmo.Api')
+    foreach ($name in $processNames) {
+        Get-Process -Name $name -ErrorAction SilentlyContinue |
+            Stop-Process -Force -ErrorAction SilentlyContinue
+    }
+
+    Get-CimInstance Win32_Process |
+        Where-Object {
+            $_.ExecutablePath -and (
+                $_.ExecutablePath -like '*\pinmo\*' -or
+                $_.ExecutablePath -like '*\PinMo\*'
+            )
+        } |
+        ForEach-Object {
+            Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+        }
+}
 
 $stdin = [Console]::In.ReadToEnd()
 $payload = $null
@@ -32,12 +51,28 @@ if (-not (Test-Path $exportScript)) {
     exit 0
 }
 
+Write-Host '[pinmo-hook] Closing all Pinmo instances before export...' -ForegroundColor Cyan
+Stop-PinmoProcesses
+Start-Sleep -Seconds 1
+
 Write-Host '[pinmo-hook] Running export.ps1 after agent completion...' -ForegroundColor Cyan
 
 & $exportScript
 if ($LASTEXITCODE -ne 0) {
     Write-Warning "[pinmo-hook] export.ps1 exited with code $LASTEXITCODE."
+    Write-Output '{}'
+    exit 0
 }
+
+$appExe = Join-Path $projectRoot 'PinMo\Pinmo.exe'
+if (-not (Test-Path $appExe)) {
+    Write-Warning "[pinmo-hook] Pinmo.exe not found at $appExe; skipping launch."
+    Write-Output '{}'
+    exit 0
+}
+
+Write-Host '[pinmo-hook] Launching Pinmo...' -ForegroundColor Cyan
+Start-Process -FilePath $appExe -WorkingDirectory (Split-Path $appExe -Parent)
 
 Write-Output '{}'
 exit 0

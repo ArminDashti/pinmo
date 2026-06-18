@@ -6,10 +6,7 @@
       "url": "1.1.1.1",
       "httpMethod": "GET",
       "isEnabled": true,
-      "createdAt": "2026-06-15T07:50:18.6724431",
-      "lastCheckedAt": "2026-06-17T06:55:14.2336761Z",
-      "lastResponseTimeMs": 91,
-      "lastIsSuccess": true
+      "createdAt": "2026-06-15T07:50:18.6724431Z"
     },
     {
       "id": "da5bce93-2620-420f-bb6e-46402404a45d",
@@ -17,10 +14,15 @@
       "url": "8.8.8.8",
       "httpMethod": "GET",
       "isEnabled": true,
-      "createdAt": "2026-06-15T07:51:07.5393206",
-      "lastCheckedAt": "2026-06-17T06:55:14.3350526Z",
-      "lastResponseTimeMs": 91,
-      "lastIsSuccess": true
+      "createdAt": "2026-06-15T07:51:07.5393206Z"
+    },
+    {
+      "id": "c65f4741-7f4f-453b-ba0f-82bcea5c43b5",
+      "name": "9.9.9.9",
+      "url": "9.9.9.9",
+      "httpMethod": "GET",
+      "isEnabled": true,
+      "createdAt": "2026-06-18T11:02:31.3052098Z"
     }
   ]
 }

@@ -11,6 +11,7 @@ export function initSettings() {
 
     try {
       await api.updateSettings({ closeWindowAction });
+      window.pinmoConfig?.setCloseWindowAction?.(closeWindowAction);
       showToast('Settings saved');
     } catch (error) {
       showToast(error.message, 'error');

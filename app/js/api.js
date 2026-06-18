@@ -1,12 +1,15 @@
 const API_BASE = window.pinmoConfig?.apiBaseUrl ?? 'http://127.0.0.1:5199/api';
 
 async function request(path, options = {}) {
+  const { signal, headers, ...rest } = options;
+
   const response = await fetch(`${API_BASE}${path}`, {
     headers: {
       'Content-Type': 'application/json',
-      ...(options.headers ?? {})
+      ...(headers ?? {})
     },
-    ...options
+    signal,
+    ...rest
   });
 
   if (!response.ok) {
@@ -28,7 +31,7 @@ async function request(path, options = {}) {
 }
 
 export const api = {
-  getDashboard: () => request('/dashboard'),
+  getDashboard: (options = {}) => request('/dashboard', options),
   resetDashboard: () => request('/dashboard/reset', { method: 'POST' }),
   getEndpoints: () => request('/endpoints'),
   createEndpoint: (payload) => request('/endpoints', { method: 'POST', body: JSON.stringify(payload) }),

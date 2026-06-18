@@ -2,6 +2,20 @@ import { api, escapeHtml, showToast } from './api.js';
 
 let refreshTimer = null;
 let loadRequestId = 0;
+let refreshInFlight = false;
+let dashboardAbortController = null;
+
+function isDashboardPageActive() {
+  return document.getElementById('page-dashboard')?.classList.contains('active') ?? false;
+}
+
+function cancelDashboardLoad() {
+  loadRequestId += 1;
+  if (dashboardAbortController) {
+    dashboardAbortController.abort();
+    dashboardAbortController = null;
+  }
+}
 
 export function initDashboard() {
   document.getElementById('refresh-dashboard').addEventListener('click', loadDashboard);
@@ -12,7 +26,26 @@ export function initDashboard() {
 
 export function startDashboardRefresh() {
   stopDashboardRefresh();
-  refreshTimer = setInterval(loadDashboard, 1000);
+  scheduleDashboardRefresh();
+}
+
+function scheduleDashboardRefresh() {
+  refreshTimer = setTimeout(() => {
+    if (!isDashboardPageActive()) {
+      return;
+    }
+
+    if (!refreshInFlight) {
+      refreshInFlight = true;
+      void loadDashboard().finally(() => {
+        refreshInFlight = false;
+      });
+    }
+
+    if (isDashboardPageActive()) {
+      scheduleDashboardRefresh();
+    }
+  }, 1000);
 }
 
 async function resetDashboard() {
@@ -39,9 +72,11 @@ async function resetDashboard() {
 
 export function stopDashboardRefresh() {
   if (refreshTimer) {
-    clearInterval(refreshTimer);
+    clearTimeout(refreshTimer);
     refreshTimer = null;
   }
+
+  cancelDashboardLoad();
 }
 
 function formatPing(value) {
@@ -53,6 +88,10 @@ function formatPacketLoss(value) {
 }
 
 function renderDashboard(summary) {
+  if (!isDashboardPageActive()) {
+    return;
+  }
+
   const tableEl = document.getElementById('dashboard-endpoints');
   const endpoints = Array.isArray(summary?.endpoints) ? summary.endpoints : [];
 
@@ -86,22 +125,40 @@ function renderDashboard(summary) {
 }
 
 async function loadDashboard() {
+  if (!isDashboardPageActive()) {
+    return;
+  }
+
   const requestId = ++loadRequestId;
+  if (dashboardAbortController) {
+    dashboardAbortController.abort();
+  }
+
+  const abortController = new AbortController();
+  dashboardAbortController = abortController;
   const tableEl = document.getElementById('dashboard-endpoints');
 
   try {
-    const summary = await api.getDashboard();
-    if (requestId !== loadRequestId) {
+    const summary = await api.getDashboard({ signal: abortController.signal });
+    if (requestId !== loadRequestId || !isDashboardPageActive()) {
       return;
     }
 
     renderDashboard(summary);
   } catch (error) {
-    if (requestId !== loadRequestId) {
+    if (error.name === 'AbortError') {
+      return;
+    }
+
+    if (requestId !== loadRequestId || !isDashboardPageActive()) {
       return;
     }
 
     tableEl.innerHTML = `<div class="empty-state">Failed to load dashboard: ${escapeHtml(error.message)}</div>`;
+  } finally {
+    if (dashboardAbortController === abortController) {
+      dashboardAbortController = null;
+    }
   }
 }
 

@@ -1,5 +1,3 @@
-using System.Text.Json.Serialization;
-
 namespace Pinmo.Core.Entities;
 
 public class MonitoredEndpoint
@@ -15,7 +13,4 @@ public class MonitoredEndpoint
     public int? LastResponseTimeMs { get; set; }
     public bool? LastIsSuccess { get; set; }
     public string? LastErrorMessage { get; set; }
-
-    [JsonIgnore]
-    public ICollection<PingRecord> PingRecords { get; set; } = [];
 }

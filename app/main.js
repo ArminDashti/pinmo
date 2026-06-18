@@ -9,6 +9,7 @@ const API_BASE = `http://127.0.0.1:${API_PORT}`;
 let apiProcess = null;
 let mainWindow = null;
 let isQuitting = false;
+let closeWindowAction = 'quit';
 
 function resolveAppDataPath() {
   if (app.isPackaged) {
@@ -142,24 +143,24 @@ function stopApiServer() {
   }
 }
 
-function readSettingsFile() {
+async function loadCloseWindowAction() {
   try {
-    const settingsPath = path.join(resolveAppDataPath(), 'settings.json');
-    if (!fs.existsSync(settingsPath)) {
-      return {};
+    const response = await fetch(`${API_BASE}/api/settings`);
+    if (!response.ok) {
+      return;
     }
 
-    return JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    const settings = await response.json();
+    if (settings.closeWindowAction) {
+      closeWindowAction = settings.closeWindowAction;
+    }
   } catch {
-    return {};
+    // Keep default quit behavior when settings are unavailable.
   }
 }
 
 function shouldMinimizeOnClose() {
-  const settings = readSettingsFile();
-  const action = settings.closeWindowAction;
-
-  return action === 'minimizeToTaskbar' || action === 'MinimizeToTaskbar' || action === 0;
+  return closeWindowAction === 'minimizeToTaskbar';
 }
 
 function createWindow() {
@@ -173,7 +174,8 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      backgroundThrottling: false
     }
   });
 
@@ -204,8 +206,15 @@ app.whenReady().then(async () => {
     app.quit();
   });
 
+  ipcMain.handle('app:setCloseWindowAction', (_event, action) => {
+    if (action === 'minimizeToTaskbar' || action === 'quit') {
+      closeWindowAction = action;
+    }
+  });
+
   try {
     await startApiServer();
+    await loadCloseWindowAction();
     createWindow();
   } catch (error) {
     console.error('Failed to start Pinmo:', error.message);
