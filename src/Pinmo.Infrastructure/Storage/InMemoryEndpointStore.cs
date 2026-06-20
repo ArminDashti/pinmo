@@ -129,6 +129,7 @@ public sealed class InMemoryEndpointStore : IEndpointStore
         int? statusCode,
         int? responseTimeMs,
         string? errorMessage,
+        int packetsSent,
         CancellationToken cancellationToken = default)
     {
         await _lock.WaitAsync(cancellationToken);
@@ -145,6 +146,7 @@ public sealed class InMemoryEndpointStore : IEndpointStore
             endpoint.LastStatusCode = statusCode;
             endpoint.LastResponseTimeMs = responseTimeMs;
             endpoint.LastErrorMessage = errorMessage;
+            endpoint.LastPacketsSent = packetsSent;
             await PersistLockedAsync(cancellationToken);
         }
         finally
@@ -191,6 +193,7 @@ public sealed class InMemoryEndpointStore : IEndpointStore
         endpoint.LastStatusCode = null;
         endpoint.LastResponseTimeMs = null;
         endpoint.LastErrorMessage = null;
+        endpoint.LastPacketsSent = null;
         return endpoint;
     }
 

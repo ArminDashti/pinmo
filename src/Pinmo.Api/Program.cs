@@ -181,7 +181,9 @@ static async Task<DashboardSummary> BuildDashboardSummaryAsync(
                 AvgPacketLossPercent = g.Average(r =>
                     r.PacketsSent > 0
                         ? (double)(r.PacketsSent - r.PacketsSucceeded) / r.PacketsSent * 100
-                        : r.IsSuccess ? 0 : 100)
+                        : r.IsSuccess ? 0 : 100),
+                AvgPacketsSent = g.Average(r => (double)r.PacketsSent),
+                Records = g.ToList()
             });
 
     var rows = endpoints.Select(endpoint =>
@@ -190,13 +192,26 @@ static async Task<DashboardSummary> BuildDashboardSummaryAsync(
         var latestPingMs = endpoint.LastIsSuccess == true && endpoint.LastResponseTimeMs > 0
             ? endpoint.LastResponseTimeMs
             : null;
+        var latestPingIsTimeout = endpoint.LastCheckedAt is not null
+            && endpoint.LastIsSuccess != true
+            && PingTimeoutHelper.IsTimeout(endpoint.LastStatusCode, endpoint.LastErrorMessage);
+        var avgPingIsTimeout = stats?.AvgPingMs is null
+            && stats?.Records.Count > 0
+            && stats.Records.All(r => r.PacketsSucceeded == 0)
+            && stats.Records.Any(r => PingTimeoutHelper.IsTimeout(r.StatusCode, r.ErrorMessage));
+        var avgPacketsSent = stats is null
+            ? endpoint.LastPacketsSent
+            : (int?)Math.Round(stats.AvgPacketsSent);
 
         return new DashboardEndpointRow(
             endpoint.Id,
             endpoint.Url,
             latestPingMs,
+            latestPingIsTimeout,
             stats?.AvgPingMs is null ? null : Math.Round(stats.AvgPingMs.Value, 1),
-            stats is null ? null : Math.Round(stats.AvgPacketLossPercent, 1));
+            avgPingIsTimeout,
+            stats is null ? null : Math.Round(stats.AvgPacketLossPercent, 1),
+            avgPacketsSent);
     }).ToList();
 
     return new DashboardSummary(rows);

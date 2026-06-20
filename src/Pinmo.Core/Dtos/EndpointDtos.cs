@@ -15,8 +15,11 @@ public record DashboardEndpointRow(
     Guid Id,
     string Url,
     int? LatestPingMs,
+    bool LatestPingIsTimeout,
     double? AvgPingMs,
-    double? AvgPacketLossPercent);
+    bool AvgPingIsTimeout,
+    double? AvgPacketLossPercent,
+    int? AvgPacketsSent);
 
 public record DashboardSummary(IReadOnlyList<DashboardEndpointRow> Endpoints);
 

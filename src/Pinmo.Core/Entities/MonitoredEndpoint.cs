@@ -13,4 +13,5 @@ public class MonitoredEndpoint
     public int? LastResponseTimeMs { get; set; }
     public bool? LastIsSuccess { get; set; }
     public string? LastErrorMessage { get; set; }
+    public int? LastPacketsSent { get; set; }
 }

@@ -371,6 +371,11 @@ body {
   word-break: break-all;
 }
 
+.ping-timeout {
+  color: var(--danger);
+  font-weight: 600;
+}
+
 .empty-state {
   text-align: center;
   color: var(--text-muted);

@@ -79,12 +79,20 @@ export function stopDashboardRefresh() {
   cancelDashboardLoad();
 }
 
-function formatPing(value) {
+function formatPing(value, isTimeout = false) {
+  if (isTimeout) {
+    return '<span class="ping-timeout">timeout</span>';
+  }
+
   return value == null ? '—' : `${value} ms`;
 }
 
 function formatPacketLoss(value) {
   return value == null ? '—' : `${value}%`;
+}
+
+function formatPacketsSent(value) {
+  return value == null ? '—' : String(value);
 }
 
 function renderDashboard(summary) {
@@ -108,15 +116,17 @@ function renderDashboard(summary) {
           <th>Latest ping</th>
           <th>Avg ping</th>
           <th>Avg packet loss</th>
+          <th>Packets sent</th>
         </tr>
       </thead>
       <tbody>
         ${endpoints.map((endpoint) => `
           <tr>
             <td>${escapeHtml(endpoint.url)}</td>
-            <td>${formatPing(endpoint.latestPingMs)}</td>
-            <td>${formatPing(endpoint.avgPingMs)}</td>
+            <td>${formatPing(endpoint.latestPingMs, endpoint.latestPingIsTimeout)}</td>
+            <td>${formatPing(endpoint.avgPingMs, endpoint.avgPingIsTimeout)}</td>
             <td>${formatPacketLoss(endpoint.avgPacketLossPercent)}</td>
+            <td>${formatPacketsSent(endpoint.avgPacketsSent)}</td>
           </tr>
         `).join('')}
       </tbody>

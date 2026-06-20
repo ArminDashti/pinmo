@@ -22,6 +22,7 @@ public class EndpointPingOrchestrator(
             result.StatusCode,
             result.PacketsSucceeded > 0 ? result.ResponseTimeMs : null,
             result.ErrorMessage,
+            result.PacketsSent,
             cancellationToken);
 
         endpoint.LastCheckedAt = result.CheckedAt;
@@ -29,6 +30,7 @@ public class EndpointPingOrchestrator(
         endpoint.LastStatusCode = result.StatusCode;
         endpoint.LastResponseTimeMs = result.PacketsSucceeded > 0 ? result.ResponseTimeMs : null;
         endpoint.LastErrorMessage = result.ErrorMessage;
+        endpoint.LastPacketsSent = result.PacketsSent;
 
         await pingRecordStore.AddAsync(new PingRecord
         {

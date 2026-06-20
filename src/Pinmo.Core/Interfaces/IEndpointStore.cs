@@ -16,6 +16,7 @@ public interface IEndpointStore
         int? statusCode,
         int? responseTimeMs,
         string? errorMessage,
+        int packetsSent,
         CancellationToken cancellationToken = default);
     Task ResetAllPingStateAsync(CancellationToken cancellationToken = default);
 }
