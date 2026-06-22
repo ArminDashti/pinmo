@@ -2,24 +2,19 @@ import { api, showToast } from './api.js';
 
 export function initSettings() {
   const form = document.getElementById('settings-form');
-  const exitButton = document.getElementById('exit-app');
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
 
-    const closeWindowAction = form.elements.closeWindowAction.value;
+    const launchAtStartup = form.elements.launchAtStartup.checked;
 
     try {
-      await api.updateSettings({ closeWindowAction });
-      window.pinmoConfig?.setCloseWindowAction?.(closeWindowAction);
+      await api.updateSettings({ launchAtStartup });
+      await window.pinmoConfig?.setLaunchAtStartup?.(launchAtStartup);
       showToast('Settings saved');
     } catch (error) {
       showToast(error.message, 'error');
     }
-  });
-
-  exitButton.addEventListener('click', () => {
-    window.pinmoConfig?.quitApp?.();
   });
 }
 
@@ -28,7 +23,7 @@ export async function loadSettings() {
 
   try {
     const settings = await api.getSettings();
-    form.elements.closeWindowAction.value = settings.closeWindowAction;
+    form.elements.launchAtStartup.checked = Boolean(settings.launchAtStartup);
   } catch (error) {
     showToast(error.message, 'error');
   }

@@ -2,6 +2,6 @@ namespace Pinmo.Core.Dtos;
 
 public record SettingsResponse(
     int RequestTimeoutSeconds,
-    string CloseWindowAction);
+    bool LaunchAtStartup);
 
-public record SettingsUpdateRequest(string CloseWindowAction);
+public record SettingsUpdateRequest(bool LaunchAtStartup);

@@ -1,3 +1,4 @@
 {
-  "requestTimeoutSeconds": 30
+  "requestTimeoutSeconds": 30,
+  "launchAtStartup": false
 }

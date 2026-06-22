@@ -95,10 +95,31 @@ function formatPacketsSent(value) {
   return value == null ? '—' : String(value);
 }
 
+function renderDashboardStats(summary) {
+  const statsEl = document.getElementById('dashboard-stats');
+  if (!statsEl) {
+    return;
+  }
+
+  const failedCount = Number.isFinite(summary?.failedPingCount)
+    ? summary.failedPingCount
+    : 0;
+  const cardClass = failedCount > 0 ? 'down' : 'up';
+
+  statsEl.innerHTML = `
+    <div class="stat-card ${cardClass}">
+      <div class="label">Ping failures</div>
+      <div class="value">${failedCount}</div>
+    </div>
+  `;
+}
+
 function renderDashboard(summary) {
   if (!isDashboardPageActive()) {
     return;
   }
+
+  renderDashboardStats(summary);
 
   const tableEl = document.getElementById('dashboard-endpoints');
   const endpoints = Array.isArray(summary?.endpoints) ? summary.endpoints : [];
@@ -126,7 +147,7 @@ function renderDashboard(summary) {
             <td>${formatPing(endpoint.latestPingMs, endpoint.latestPingIsTimeout)}</td>
             <td>${formatPing(endpoint.avgPingMs, endpoint.avgPingIsTimeout)}</td>
             <td>${formatPacketLoss(endpoint.avgPacketLossPercent)}</td>
-            <td>${formatPacketsSent(endpoint.avgPacketsSent)}</td>
+            <td>${formatPacketsSent(endpoint.totalPacketsSent)}</td>
           </tr>
         `).join('')}
       </tbody>

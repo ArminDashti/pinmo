@@ -39,6 +39,8 @@
           </div>
         </header>
 
+        <div id="dashboard-stats" class="stats-grid"></div>
+
         <div class="panel">
           <div class="panel-header">
             <h3>Endpoints</h3>
@@ -86,16 +88,15 @@
 
         <div class="panel">
           <form id="settings-form" class="form-grid">
-            <div class="form-field">
-              <label for="close-window-action">When closing the window</label>
-              <select id="close-window-action" name="closeWindowAction">
-                <option value="minimizeToTaskbar">Minimize to taskbar (keep running)</option>
-                <option value="quit">Close application</option>
-              </select>
+            <div class="form-field form-checkbox">
+              <label for="launch-at-startup">
+                <input id="launch-at-startup" name="launchAtStartup" type="checkbox">
+                Launch Pinmo when Windows starts
+              </label>
             </div>
+            <p class="settings-hint">Closing or minimizing the window keeps Pinmo running in the taskbar. Right-click the tray icon and choose Quit to exit.</p>
             <div class="form-actions">
               <button type="submit" class="btn btn-primary">Save settings</button>
-              <button type="button" class="btn btn-secondary" id="exit-app">Exit application</button>
             </div>
           </form>
         </div>

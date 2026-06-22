@@ -19,9 +19,11 @@ public record DashboardEndpointRow(
     double? AvgPingMs,
     bool AvgPingIsTimeout,
     double? AvgPacketLossPercent,
-    int? AvgPacketsSent);
+    int? TotalPacketsSent);
 
-public record DashboardSummary(IReadOnlyList<DashboardEndpointRow> Endpoints);
+public record DashboardSummary(
+    IReadOnlyList<DashboardEndpointRow> Endpoints,
+    int FailedPingCount);
 
 public record PingResultResponse(
     Guid EndpointId,

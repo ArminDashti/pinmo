@@ -64,18 +64,12 @@ public sealed class InMemorySettingsStore : ISettingsStore
     {
         var normalized = Clone(settings);
         normalized.RequestTimeoutSeconds = Math.Clamp(normalized.RequestTimeoutSeconds, 1, 120);
-
-        if (!Enum.IsDefined(normalized.CloseWindowAction))
-        {
-            normalized.CloseWindowAction = CloseWindowAction.Quit;
-        }
-
         return normalized;
     }
 
     private static AppSettings Clone(AppSettings settings) => new()
     {
         RequestTimeoutSeconds = settings.RequestTimeoutSeconds,
-        CloseWindowAction = settings.CloseWindowAction
+        LaunchAtStartup = settings.LaunchAtStartup
     };
 }

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, shell, ipcMain, Tray, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -8,8 +8,9 @@ const API_PORT = 5199;
 const API_BASE = `http://127.0.0.1:${API_PORT}`;
 let apiProcess = null;
 let mainWindow = null;
+let tray = null;
+let trayStatusTimer = null;
 let isQuitting = false;
-let closeWindowAction = 'quit';
 
 function resolveAppDataPath() {
   if (app.isPackaged) {
@@ -143,24 +144,118 @@ function stopApiServer() {
   }
 }
 
-async function loadCloseWindowAction() {
+async function loadAppSettings() {
   try {
     const response = await fetch(`${API_BASE}/api/settings`);
+    if (!response.ok) {
+      return { launchAtStartup: false };
+    }
+
+    const settings = await response.json();
+    return {
+      launchAtStartup: Boolean(settings.launchAtStartup)
+    };
+  } catch {
+    return { launchAtStartup: false };
+  }
+}
+
+function applyLaunchAtStartup(enabled) {
+  app.setLoginItemSettings({
+    openAtLogin: enabled,
+    path: process.execPath,
+    args: app.isPackaged ? [] : [path.resolve(process.argv[1])]
+  });
+}
+
+function resolveTrayIcon() {
+  const iconPath = path.join(__dirname, 'assets', 'tray-icon.png');
+  return nativeImage.createFromPath(iconPath);
+}
+
+function showMainWindow() {
+  if (!mainWindow) {
+    createWindow();
+    return;
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function quitApp() {
+  isQuitting = true;
+  app.quit();
+}
+
+function updateTrayStatus(failedPingCount = 0) {
+  if (!tray) {
+    return;
+  }
+
+  const tooltip = failedPingCount > 0
+    ? `Pinmo - ${failedPingCount} ping failure${failedPingCount === 1 ? '' : 's'}`
+    : 'Pinmo';
+
+  tray.setToolTip(tooltip);
+}
+
+async function refreshTrayStatus() {
+  try {
+    const response = await fetch(`${API_BASE}/api/dashboard`);
     if (!response.ok) {
       return;
     }
 
-    const settings = await response.json();
-    if (settings.closeWindowAction) {
-      closeWindowAction = settings.closeWindowAction;
-    }
+    const summary = await response.json();
+    const failedPingCount = Number.isFinite(summary.failedPingCount)
+      ? summary.failedPingCount
+      : 0;
+
+    updateTrayStatus(failedPingCount);
   } catch {
-    // Keep default quit behavior when settings are unavailable.
+    // API may be unavailable during shutdown.
   }
 }
 
-function shouldMinimizeOnClose() {
-  return closeWindowAction === 'minimizeToTaskbar';
+function startTrayStatusRefresh() {
+  stopTrayStatusRefresh();
+  void refreshTrayStatus();
+  trayStatusTimer = setInterval(() => {
+    void refreshTrayStatus();
+  }, 2000);
+}
+
+function stopTrayStatusRefresh() {
+  if (trayStatusTimer) {
+    clearInterval(trayStatusTimer);
+    trayStatusTimer = null;
+  }
+}
+
+function createTray() {
+  const icon = resolveTrayIcon().resize({ width: 16, height: 16 });
+  tray = new Tray(icon);
+  updateTrayStatus();
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'Open Pinmo',
+      click: () => showMainWindow()
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit',
+      click: () => quitApp()
+    }
+  ]);
+
+  tray.setContextMenu(contextMenu);
+  tray.on('double-click', () => showMainWindow());
 }
 
 function createWindow() {
@@ -191,7 +286,7 @@ function createWindow() {
   }
 
   mainWindow.on('close', (event) => {
-    if (shouldMinimizeOnClose() && !isQuitting) {
+    if (!isQuitting) {
       event.preventDefault();
       mainWindow.minimize();
     }
@@ -201,20 +296,16 @@ function createWindow() {
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
 
-  ipcMain.handle('app:quit', () => {
-    isQuitting = true;
-    app.quit();
-  });
-
-  ipcMain.handle('app:setCloseWindowAction', (_event, action) => {
-    if (action === 'minimizeToTaskbar' || action === 'quit') {
-      closeWindowAction = action;
-    }
+  ipcMain.handle('app:setLaunchAtStartup', (_event, enabled) => {
+    applyLaunchAtStartup(Boolean(enabled));
   });
 
   try {
     await startApiServer();
-    await loadCloseWindowAction();
+    const settings = await loadAppSettings();
+    applyLaunchAtStartup(settings.launchAtStartup);
+    createTray();
+    startTrayStatusRefresh();
     createWindow();
   } catch (error) {
     console.error('Failed to start Pinmo:', error.message);
@@ -222,21 +313,21 @@ app.whenReady().then(async () => {
   }
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
+    showMainWindow();
   });
 });
 
 app.on('window-all-closed', () => {
-  stopApiServer();
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  // Keep running in the system tray.
 });
 
 app.on('before-quit', () => {
   isQuitting = true;
+  stopTrayStatusRefresh();
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
   stopApiServer();
 });
 

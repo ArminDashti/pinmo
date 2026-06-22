@@ -149,13 +149,8 @@ api.MapGet("/settings", async (ISettingsStore settingsStore) =>
 
 api.MapPut("/settings", async (SettingsUpdateRequest request, ISettingsStore settingsStore) =>
 {
-    if (!TryParseCloseWindowAction(request.CloseWindowAction, out var closeAction))
-    {
-        return Results.BadRequest(new { message = "Invalid close window action." });
-    }
-
     var settings = await settingsStore.GetAsync();
-    settings.CloseWindowAction = closeAction;
+    settings.LaunchAtStartup = request.LaunchAtStartup;
     var saved = await settingsStore.SaveAsync(settings);
     return Results.Ok(ToSettingsResponse(saved));
 });
@@ -182,7 +177,7 @@ static async Task<DashboardSummary> BuildDashboardSummaryAsync(
                     r.PacketsSent > 0
                         ? (double)(r.PacketsSent - r.PacketsSucceeded) / r.PacketsSent * 100
                         : r.IsSuccess ? 0 : 100),
-                AvgPacketsSent = g.Average(r => (double)r.PacketsSent),
+                TotalPacketsSent = g.Sum(r => r.PacketsSent),
                 Records = g.ToList()
             });
 
@@ -199,9 +194,9 @@ static async Task<DashboardSummary> BuildDashboardSummaryAsync(
             && stats?.Records.Count > 0
             && stats.Records.All(r => r.PacketsSucceeded == 0)
             && stats.Records.Any(r => PingTimeoutHelper.IsTimeout(r.StatusCode, r.ErrorMessage));
-        var avgPacketsSent = stats is null
+        var totalPacketsSent = stats is null
             ? endpoint.LastPacketsSent
-            : (int?)Math.Round(stats.AvgPacketsSent);
+            : stats.TotalPacketsSent;
 
         return new DashboardEndpointRow(
             endpoint.Id,
@@ -211,35 +206,19 @@ static async Task<DashboardSummary> BuildDashboardSummaryAsync(
             stats?.AvgPingMs is null ? null : Math.Round(stats.AvgPingMs.Value, 1),
             avgPingIsTimeout,
             stats is null ? null : Math.Round(stats.AvgPacketLossPercent, 1),
-            avgPacketsSent);
+            totalPacketsSent);
     }).ToList();
 
-    return new DashboardSummary(rows);
+    var failedPingCount = endpoints.Count(endpoint =>
+        endpoint.IsEnabled
+        && endpoint.LastCheckedAt is not null
+        && endpoint.LastIsSuccess == false);
+
+    return new DashboardSummary(rows, failedPingCount);
 }
 
 static SettingsResponse ToSettingsResponse(AppSettings settings) =>
-    new(settings.RequestTimeoutSeconds, ToCloseWindowActionValue(settings.CloseWindowAction));
-
-static string ToCloseWindowActionValue(CloseWindowAction action) =>
-    action == CloseWindowAction.MinimizeToTaskbar ? "minimizeToTaskbar" : "quit";
-
-static bool TryParseCloseWindowAction(string? value, out CloseWindowAction action)
-{
-    if (string.Equals(value, "minimizeToTaskbar", StringComparison.OrdinalIgnoreCase))
-    {
-        action = CloseWindowAction.MinimizeToTaskbar;
-        return true;
-    }
-
-    if (string.Equals(value, "quit", StringComparison.OrdinalIgnoreCase))
-    {
-        action = CloseWindowAction.Quit;
-        return true;
-    }
-
-    action = CloseWindowAction.Quit;
-    return false;
-}
+    new(settings.RequestTimeoutSeconds, settings.LaunchAtStartup);
 
 static string ResolveAppDataPath(IConfiguration configuration)
 {
