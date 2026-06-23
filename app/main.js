@@ -173,11 +173,22 @@ function resolveTrayIcon() {
   return nativeImage.createFromPath(iconPath);
 }
 
+function hideToTray() {
+  if (!mainWindow) {
+    return;
+  }
+
+  mainWindow.setSkipTaskbar(true);
+  mainWindow.hide();
+}
+
 function showMainWindow() {
   if (!mainWindow) {
     createWindow();
     return;
   }
+
+  mainWindow.setSkipTaskbar(false);
 
   if (mainWindow.isMinimized()) {
     mainWindow.restore();
@@ -285,10 +296,15 @@ function createWindow() {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
 
+  mainWindow.on('minimize', (event) => {
+    event.preventDefault();
+    hideToTray();
+  });
+
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
       event.preventDefault();
-      mainWindow.minimize();
+      hideToTray();
     }
   });
 }
